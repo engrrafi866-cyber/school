@@ -1,4 +1,4 @@
-/* আলোকিত প্রাথমিক বিদ্যালয় — Supabase-backed school management */
+/* Sun Child Care Academy Non Government Primary School — Supabase-backed school management */
 const SCHOOL_ID = window.SCHOOL_CONFIG.schoolId;
 const dbClient = window.supabase.createClient(window.SCHOOL_CONFIG.url, window.SCHOOL_CONFIG.publishableKey);
 let db = emptyDatabase();
@@ -41,7 +41,7 @@ function toast(message, error = false) {
 function normalizePhone(phone) { return String(phone || '').trim(); }
 
 function emptyDatabase() {
-  return { settings: { schoolName: 'আলোকিত প্রাথমিক বিদ্যালয়', motto: '', session: '', phone: '', email: '', address: '' }, classes: [], students: [], teachers: [], attendance: {}, fees: [], notices: [], documents: [] };
+  return { settings: { schoolName: 'Sun Child Care Academy Non Government Primary School', motto: '', session: '', phone: '', email: '', address: '' }, classes: [], students: [], teachers: [], attendance: {}, fees: [], notices: [], documents: [] };
 }
 function backendError(error) {
   const message = String(error?.message || error || 'অজানা সমস্যা');
