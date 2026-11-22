@@ -489,11 +489,6 @@ function exportCSV(type) {
   toast('CSV ফাইল ডাউনলোড হচ্ছে।');
 }
 
-function readFileAsDataURL(file) {
-  return new Promise((resolve,reject) => {
-    const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = reject; reader.readAsDataURL(file);
-  });
-}
 async function storeDocuments(files) {
   const allowed = /\.(pdf|doc|docx|xls|xlsx|png|jpe?g|webp)$/i;
   let added = 0;
