@@ -4,7 +4,13 @@
 
 ## চালানো
 
-`index.html` খুলুন, অথবা GitHub Pages চালু করে repository-র root থেকে প্রকাশ করুন। আলাদা build step বা package install লাগে না।
+`index.html` খুলুন, অথবা GitHub Pages দিয়ে প্রকাশ করুন। আলাদা build step বা package install লাগে না।
+
+## GitHub Pages প্রকাশ
+
+এই repository-তে `.github/workflows/deploy.yml` রাখা হয়েছে। GitHub-এর **Settings → Pages** থেকে **Source: GitHub Actions** নির্বাচন করে **Actions → Deploy school site → Run workflow** চাপলে সাইটটি প্রকাশ হবে। Workflow শুধু হাতে চালালে deploy করে; প্রতি push-এ নিজে থেকে প্রকাশ করে না।
+
+GitHub Pages সাইট public হয়, যদিও repository private থাকতে পারে (আপনার GitHub plan-এ private repository Pages সমর্থিত হলে)। প্রকাশের আগে ডেমো লগইন ও নিরাপত্তার সীমাবদ্ধতা বিবেচনা করুন।
 
 ## অ্যাডমিন ডেমো লগইন
 
@@ -17,7 +23,7 @@
 
 এই প্রাথমিক সংস্করণে ডেটা ব্রাউজারের `localStorage`-এ থাকে। তাই একই ব্রাউজার/ডিভাইসে দেখা যায়; অন্য কম্পিউটারে নিজে থেকে সিঙ্ক হয় না। JSON ব্যাকআপ নিয়মিত ডাউনলোড করে নিরাপদ স্থানে রাখুন। নথি ব্রাউজারের স্টোরেজ-সীমার মধ্যে থাকে।
 
-GitHub Pages কেবল static website পরিবেশন করে। বাস্তব স্কুলে একাধিক ব্যবহারকারী, দূরবর্তী ডেটা সংরক্ষণ, role-based access, শক্তিশালী authentication, audit log ও নিরাপদ file storage চালু করতে server/backend (যেমন Supabase) যুক্ত করতে হবে। এই ডেমোর লগইন production নিরাপত্তা দেয় না; এখানে শিক্ষার্থীর বাস্তব ব্যক্তিগত তথ্য দেবেন না।
+GitHub Pages কেবল static website পরিবেশন করে। ডেমো অ্যাডমিন লগইন তথ্য পৃষ্ঠায় দেখানো হয় এবং তথ্য ব্রাউজারেই থাকে; এটি production authentication নয়। বাস্তব স্কুলে একাধিক ব্যবহারকারী, দূরবর্তী ডেটা সংরক্ষণ, role-based access, audit log ও নিরাপদ file storage চালু করতে server/backend (যেমন Supabase) যুক্ত করতে হবে। এখানে শিক্ষার্থীর বাস্তব ব্যক্তিগত তথ্য দেবেন না।
 
 ## অন্তর্ভুক্ত মডিউল
 
