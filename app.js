@@ -1,9 +1,11 @@
-/* আলোকিত প্রাথমিক বিদ্যালয় — browser-only school management demo */
-const STORE_KEY = 'alokito_school_management_v1';
-const DEMO_EMAIL = 'admin@aloron.edu.bd';
-const DEMO_PASSWORD = 'School@123';
-
-let db;
+/* আলোকিত প্রাথমিক বিদ্যালয় — Supabase-backed school management */
+const SCHOOL_ID = window.SCHOOL_CONFIG.schoolId;
+const dbClient = window.supabase.createClient(window.SCHOOL_CONFIG.url, window.SCHOOL_CONFIG.publishableKey);
+let db = emptyDatabase();
+let currentUser = null;
+let currentProfile = null;
+let authMode = 'login';
+let passwordRecovery = false;
 let currentPage = 'home';
 let searchText = '';
 let attendanceDate = localDateISO();
@@ -38,99 +40,78 @@ function toast(message, error = false) {
 }
 function normalizePhone(phone) { return String(phone || '').trim(); }
 
-async function digest(text) {
-  if (!window.crypto?.subtle) return btoa(unescape(encodeURIComponent(text)));
-  const bytes = new TextEncoder().encode(text);
-  const hash = await crypto.subtle.digest('SHA-256', bytes);
-  return [...new Uint8Array(hash)].map(v => v.toString(16).padStart(2, '0')).join('');
+function emptyDatabase() {
+  return { settings: { schoolName: 'আলোকিত প্রাথমিক বিদ্যালয়', motto: '', session: '', phone: '', email: '', address: '' }, classes: [], students: [], teachers: [], attendance: {}, fees: [], notices: [], documents: [] };
 }
-async function makeAdmin(password) {
-  const salt = crypto?.getRandomValues ? [...crypto.getRandomValues(new Uint8Array(16))].map(x => x.toString(16).padStart(2,'0')).join('') : uid('salt');
-  return { email: DEMO_EMAIL, salt, hash: await digest(`${salt}:${password}`) };
+function backendError(error) {
+  const message = String(error?.message || error || 'অজানা সমস্যা');
+  if (/Invalid login credentials/i.test(message)) return 'ইমেইল বা পাসওয়ার্ড সঠিক নয়।';
+  if (/Email not confirmed/i.test(message)) return 'ইমেইল নিশ্চিত করে আবার লগইন করুন।';
+  if (/duplicate key|already exists/i.test(message)) return 'এই তথ্যটি আগে থেকেই আছে।';
+  if (/row-level security|permission denied/i.test(message)) return 'এই কাজের অনুমতি নেই। অ্যাডমিন অ্যাকাউন্ট দিয়ে প্রবেশ করুন।';
+  return message;
 }
-
-function seedDatabase() {
-  const classes = [
-    { id: 'cls-1', name: 'প্রথম শ্রেণি', teacher: 'সাবিনা ইয়াসমিন', room: 'কক্ষ ১০১' },
-    { id: 'cls-2', name: 'দ্বিতীয় শ্রেণি', teacher: 'মোহাম্মদ রফিক', room: 'কক্ষ ১০২' },
-    { id: 'cls-3', name: 'তৃতীয় শ্রেণি', teacher: 'নাসরিন আক্তার', room: 'কক্ষ ২০১' },
-    { id: 'cls-4', name: 'চতুর্থ শ্রেণি', teacher: 'মো. কামাল হোসেন', room: 'কক্ষ ২০২' },
-    { id: 'cls-5', name: 'পঞ্চম শ্রেণি', teacher: 'সাবিনা ইয়াসমিন', room: 'কক্ষ ২০৩' }
-  ];
-  const names = [
-    ['আরিফা রহমান','মো. সাইফুল ইসলাম','তাসনিম আক্তার','রায়হান আহমেদ','নুসরাত জাহান','ফাহিম হাসান'],
-    ['মাহিরা ইসলাম','শাকিল হোসেন','জান্নাতুল ফেরদৌস','ইমরান কবির','সাদিয়া রহমান','নাঈম উদ্দিন'],
-    ['আয়েশা সিদ্দিকা','তানভীর আহমেদ','মারিয়া আক্তার','শুভ দাস','ফারজানা ইয়াসমিন','রিদওয়ান হোসেন'],
-    ['সামিউল ইসলাম','মিম আক্তার','আব্দুল্লাহ আল নোমান','সুমাইয়া খাতুন','হৃদয় সরকার','ইশরাত জাহান'],
-    ['তামিম ইকবাল','রাফিয়া রহমান','জুবায়ের হোসেন','মেহজাবিন সুলতানা','সাকিব হাসান','তানহা ইসলাম']
-  ];
-  const guardianNames = ['মো. আব্দুল করিম','রোকেয়া বেগম','মো. হাবিবুর রহমান','শাহানা আক্তার','মো. জাহিদুল ইসলাম','সালমা খাতুন'];
-  const students = names.flatMap((list, classIndex) => list.map((name, i) => ({
-    id: `stu-${classIndex + 1}-${i + 1}`, name, guardian: guardianNames[(i + classIndex) % guardianNames.length],
-    classId: `cls-${classIndex + 1}`, roll: i + 1, phone: `01${3 + ((i + classIndex) % 7)}${String(23456789 + i * 431 + classIndex * 79).slice(0, 8)}`,
-    admission: `${2021 + classIndex}-01-${String(8 + i).padStart(2, '0')}`, status: 'সক্রিয়'
-  })));
-  const attendance = {};
-  for (let days = 0; days < 7; days++) {
-    const presentCount = Math.round(students.length * (0.82 + ((days * 7) % 12) / 100));
-    attendance[daysAgo(days)] = Object.fromEntries(students.map((s, i) => [s.id, i < presentCount ? 'present' : 'absent']));
-  }
-  return {
-    version: 1,
-    settings: { schoolName: 'আলোকিত প্রাথমিক বিদ্যালয়', motto: 'জ্ঞান, শৃঙ্খলা ও মানবিকতার আলোয়', session: '২০২৬ শিক্ষাবর্ষ', phone: '০১৭১২-৩৪৫৬৭৮', email: 'info@aloron.edu.bd', address: 'মিরপুর, ঢাকা, বাংলাদেশ' },
-    classes,
-    students,
-    teachers: [
-      { id: 'tch-1', name: 'সাবিনা ইয়াসমিন', subject: 'বাংলা ও গণিত', phone: '০১৭১২-১১১২২২', email: 'sabina@aloron.edu.bd' },
-      { id: 'tch-2', name: 'মোহাম্মদ রফিক', subject: 'ইংরেজি', phone: '০১৮১২-২২২৩৩৩', email: 'rafiq@aloron.edu.bd' },
-      { id: 'tch-3', name: 'নাসরিন আক্তার', subject: 'বিজ্ঞান ও সমাজ', phone: '০১৯১২-৩৩৩৪৪৪', email: 'nasrin@aloron.edu.bd' },
-      { id: 'tch-4', name: 'মো. কামাল হোসেন', subject: 'গণিত ও শরীরচর্চা', phone: '০১৬১২-৪৪৪৫৫৫', email: 'kamal@aloron.edu.bd' }
-    ],
-    attendance,
-    fees: students.slice(0, 12).map((s, i) => ({ id: `fee-${i + 1}`, studentId: s.id, month: 'নভেম্বর ২০২৬', due: 500, paid: i < 8 ? 500 : 0, date: i < 8 ? daysAgo(i % 5) : '' })),
-    notices: [
-      { id: 'notice-1', title: 'বার্ষিক ক্রীড়া প্রতিযোগিতা', date: daysAgo(-5), type: 'অনুষ্ঠান', body: 'আগামী সপ্তাহে বিদ্যালয় মাঠে বার্ষিক ক্রীড়া প্রতিযোগিতা অনুষ্ঠিত হবে। শিক্ষার্থীদের সকাল ৯টার মধ্যে উপস্থিত থাকতে হবে।' },
-      { id: 'notice-2', title: 'অর্ধবার্ষিক পরীক্ষার সময়সূচি', date: daysAgo(-12), type: 'পরীক্ষা', body: 'অর্ধবার্ষিক পরীক্ষার বিস্তারিত সময়সূচি বিদ্যালয়ের নোটিশ বোর্ডে প্রকাশ করা হয়েছে। শ্রেণিশিক্ষকের সঙ্গে যোগাযোগ করুন।' },
-      { id: 'notice-3', title: 'অভিভাবক সভা', date: daysAgo(-18), type: 'সভা', body: 'শিক্ষার্থীদের অগ্রগতি নিয়ে অভিভাবক সভা শুক্রবার সকাল ১০টায় অনুষ্ঠিত হবে।' }
-    ],
-    documents: [],
-    admin: null
-  };
+async function loadPublicData() {
+  const [{ data: school, error: schoolError }, { data: notices, error: noticesError }] = await Promise.all([
+    dbClient.from('schools').select('id,name,motto,session,phone,email,address').eq('id', SCHOOL_ID).maybeSingle(),
+    dbClient.from('notices').select('id,title,date,type,body').eq('school_id', SCHOOL_ID).eq('is_published', true).order('date', { ascending: false }).limit(12)
+  ]);
+  if (schoolError) throw schoolError;
+  if (noticesError) throw noticesError;
+  if (school) db.settings = { schoolName: school.name, motto: school.motto, session: school.session, phone: school.phone, email: school.email, address: school.address };
+  db.notices = (notices || []).map(row => ({ id: row.id, title: row.title, date: row.date, type: row.type, body: row.body }));
 }
-
+async function loadProfile() {
+  if (!currentUser) { currentProfile = null; return null; }
+  const { data, error } = await dbClient.from('profiles').select('user_id,school_id,role,display_name,is_active').eq('user_id', currentUser.id).maybeSingle();
+  if (error) throw error;
+  currentProfile = data;
+  return data;
+}
+async function loadSchoolData() {
+  const names = ['classes','students','teachers','attendance','fee_records','notices','documents'];
+  const results = await Promise.all(names.map(name => dbClient.from(name).select('*').eq('school_id', currentProfile.school_id)));
+  for (let i = 0; i < results.length; i++) if (results[i].error) throw results[i].error;
+  const rows = Object.fromEntries(names.map((name, i) => [name, results[i].data || []]));
+  const schoolResult = await dbClient.from('schools').select('id,name,motto,session,phone,email,address').eq('id', currentProfile.school_id).single();
+  if (schoolResult.error) throw schoolResult.error;
+  const school = schoolResult.data;
+  db.settings = { schoolName: school.name, motto: school.motto, session: school.session, phone: school.phone, email: school.email, address: school.address };
+  db.classes = rows.classes.map(x => ({ id:x.id, name:x.name, teacher:x.teacher, room:x.room }));
+  db.students = rows.students.map(x => ({ id:x.id, name:x.name, guardian:x.guardian, classId:x.class_id || '', roll:x.roll, phone:x.phone, admission:x.admission, status:x.status }));
+  db.teachers = rows.teachers.map(x => ({ id:x.id, name:x.name, subject:x.subject, phone:x.phone, email:x.email }));
+  db.attendance = {};
+  rows.attendance.forEach(x => { (db.attendance[x.attendance_date] ||= {})[x.student_id] = x.status; });
+  db.fees = rows.fee_records.map(x => ({ id:x.id, studentId:x.student_id, month:x.month, due:Number(x.amount_due), paid:Number(x.amount_paid), date:x.paid_at || '' }));
+  db.notices = rows.notices.map(x => ({ id:x.id, title:x.title, date:x.date, type:x.type, body:x.body, published:x.is_published }));
+  db.documents = rows.documents.map(x => ({ id:x.id, name:x.name, category:x.category, note:x.note, storagePath:x.storage_path, uploadedAt:x.uploaded_at.slice(0,10), size:Number(x.size_bytes), mime:x.mime_type }));
+}
 async function initialize() {
-  try {
-    const stored = localStorage.getItem(STORE_KEY);
-    if (stored) {
-      db = JSON.parse(stored);
-      if (!db.admin?.hash) db.admin = await makeAdmin(DEMO_PASSWORD);
-    } else {
-      db = seedDatabase();
-      db.admin = await makeAdmin(DEMO_PASSWORD);
-      localStorage.setItem(STORE_KEY, JSON.stringify(db));
+  dbClient.auth.onAuthStateChange((event, session) => {
+    if (event === 'PASSWORD_RECOVERY') {
+      window.setTimeout(() => { currentUser=session?.user || null; passwordRecovery=true; render(); }, 0);
     }
-  } catch (err) {
-    db = seedDatabase();
-    db.admin = await makeAdmin(DEMO_PASSWORD);
-    toast('ব্রাউজারের স্টোরেজ পড়া যায়নি; ডেমো ডেটা দেখানো হচ্ছে।', true);
-  }
+  });
+  try {
+    await loadPublicData();
+    const { data, error } = await dbClient.auth.getSession();
+    if (error) throw error;
+    currentUser = data.session?.user || null;
+    if (currentUser) {
+      await loadProfile();
+      if (currentProfile?.role === 'admin' && currentProfile.is_active) await loadSchoolData();
+    }
+  } catch (error) { toast(`Backend সংযোগ করা যায়নি: ${backendError(error)}`, true); }
   render();
 }
-
-function saveDb(message = '') {
-  try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(db));
-    if (message) toast(message);
-    return true;
-  } catch (err) {
-    toast('স্টোরেজ পূর্ণ। বড় ফাইল বাদ দিয়ে আবার চেষ্টা করুন বা ব্যাকআপ নিন।', true);
-    return false;
-  }
+async function refreshData(message = '') {
+  try { await loadSchoolData(); render(); if (message) toast(message); return true; }
+  catch (error) { toast(backendError(error), true); return false; }
 }
 function getClass(id) { return db.classes.find(c => c.id === id); }
 function getStudent(id) { return db.students.find(s => s.id === id); }
-function studentClassName(student) { return getClass(student.classId)?.name || 'শ্রেণি নেই'; }
-function isLoggedIn() { return sessionStorage.getItem('alokito_admin_session') === 'active'; }
+function studentClassName(student) { return getClass(student?.classId)?.name || 'শ্রেণি নেই'; }
+function isLoggedIn() { return Boolean(currentUser && currentProfile?.role === 'admin' && currentProfile.is_active); }
 function goTo(page) { currentPage = page; searchText = ''; document.querySelector('.sidebar')?.classList.remove('open'); render(); window.scrollTo(0, 0); }
 
 const NAV = [
@@ -146,7 +127,11 @@ const NAV = [
 ];
 
 function render() {
-  if (isLoggedIn()) {
+  if (passwordRecovery) {
+    renderPasswordRecovery();
+  } else if (currentUser && !currentProfile) {
+    renderAdminSetup();
+  } else if (isLoggedIn()) {
     if (currentPage === 'home' || currentPage === 'login') currentPage = 'dashboard';
     renderApp();
   } else if (currentPage === 'login') renderLogin();
@@ -175,9 +160,9 @@ function renderPublic() {
         <div class="hero-illustration" aria-hidden="true"><div class="school-illustration"><div class="school-flag"></div><div class="school-roof"></div><div class="school-body"><div class="school-window"></div><div class="school-door"></div><div class="school-window"></div></div><div class="school-base"></div></div></div>
       </section>
       <section class="public-stats" aria-label="বিদ্যালয়ের পরিসংখ্যান">
-        <div class="public-stat"><strong>${bn(db.students.length)}+</strong><span>আনন্দিত শিক্ষার্থী</span></div>
-        <div class="public-stat"><strong>${bn(db.teachers.length)}+</strong><span>অভিজ্ঞ শিক্ষক</span></div>
-        <div class="public-stat"><strong>${bn(db.classes.length)}</strong><span>শ্রেণি</span></div>
+        <div class="public-stat"><strong>১ম–৫ম</strong><span>প্রাথমিক শ্রেণি</span></div>
+        <div class="public-stat"><strong>সহায়ক</strong><span>অভিজ্ঞ শিক্ষকবৃন্দ</span></div>
+        <div class="public-stat"><strong>নিরাপদ</strong><span>শিশুবান্ধব পরিবেশ</span></div>
         <div class="public-stat"><strong>১০০%</strong><span>শিশুবান্ধব পরিবেশ</span></div>
       </section>
       <section class="section" id="facilities">
@@ -197,6 +182,7 @@ function renderPublic() {
 }
 
 function renderLogin() {
+  const signup = authMode === 'signup';
   app.innerHTML = `
     <div class="login-screen">
       <aside class="login-aside"><div class="login-aside-inner">
@@ -205,16 +191,23 @@ function renderLogin() {
         <p>শিক্ষার্থী, শিক্ষক, উপস্থিতি, ফি ও নথি—সহজে ও সুশৃঙ্খলভাবে পরিচালনা করুন।</p>
         <div class="login-bullets"><span>কাগজবিহীন তথ্য ব্যবস্থাপনা</span><span>দ্রুত ব্যাকআপ ও রিপোর্ট</span><span>বিদ্যালয়ের জন্য সহজ ড্যাশবোর্ড</span></div>
       </div></aside>
-      <section class="login-card-wrap"><form class="login-card" id="login-form">
+      <section class="login-card-wrap"><div class="login-card">
         <span class="eyebrow" style="color:#47725d;border-color:#d9e8dc;background:#f3f8f4;margin-bottom:16px">প্রশাসনিক প্রবেশ</span>
-        <h2>অ্যাডমিন লগইন</h2><p>আপনার অ্যাডমিন অ্যাকাউন্ট দিয়ে প্রবেশ করুন।</p>
-        <div class="field"><label for="login-email">ইমেইল</label><input id="login-email" name="email" type="email" autocomplete="username" required placeholder="admin@school.edu.bd" /></div>
-        <div class="field"><label for="login-password">পাসওয়ার্ড</label><input id="login-password" name="password" type="password" autocomplete="current-password" required placeholder="আপনার পাসওয়ার্ড" /></div>
-        <button class="btn btn-primary" type="submit" style="width:100%;margin-top:4px">নিরাপদে প্রবেশ করুন <span>→</span></button>
+        <h2>${signup ? 'প্রথম অ্যাডমিন অ্যাকাউন্ট' : 'অ্যাডমিন লগইন'}</h2>
+        <p>${signup ? 'নিজের ইমেইল ও পাসওয়ার্ড দিয়ে অ্যাকাউন্ট তৈরি করুন।' : 'আপনার অ্যাডমিন অ্যাকাউন্ট দিয়ে প্রবেশ করুন।'}</p>
+        ${signup ? `<form id="signup-form"><div class="field"><label>আপনার নাম</label><input name="displayName" autocomplete="name" required minlength="2" /></div><div class="field"><label>ইমেইল</label><input name="email" type="email" autocomplete="email" required placeholder="name@school.edu.bd" /></div><div class="field"><label>পাসওয়ার্ড</label><input name="password" type="password" autocomplete="new-password" minlength="8" required /></div><button class="btn btn-primary" type="submit" style="width:100%;margin-top:4px">অ্যাকাউন্ট তৈরি করুন <span>→</span></button></form>` : `<form id="login-form"><div class="field"><label for="login-email">ইমেইল</label><input id="login-email" name="email" type="email" autocomplete="username" required placeholder="name@school.edu.bd" /></div><div class="field"><label for="login-password">পাসওয়ার্ড</label><input id="login-password" name="password" type="password" autocomplete="current-password" required placeholder="আপনার পাসওয়ার্ড" /></div><button class="btn btn-primary" type="submit" style="width:100%;margin-top:4px">নিরাপদে প্রবেশ করুন <span>→</span></button><button class="btn btn-quiet" type="button" data-action="reset-password">পাসওয়ার্ড ভুলে গেছেন?</button></form>`}
+        <button class="btn btn-quiet login-home" type="button" data-action="toggle-auth">${signup ? 'আগে অ্যাকাউন্ট আছে? লগইন করুন' : 'প্রথমবার? অ্যাডমিন অ্যাকাউন্ট তৈরি করুন'}</button>
         <button class="btn btn-quiet login-home" type="button" data-action="home">← বিদ্যালয়ের পাতায় ফিরে যান</button>
-        <div class="demo-note"><strong>প্রথমবারের ডেমো লগইন</strong><br/>ইমেইল: ${DEMO_EMAIL}<br/>পাসওয়ার্ড: ${DEMO_PASSWORD}<br/>প্রবেশের পর সেটিংস থেকে পাসওয়ার্ড বদলান।</div>
-      </form></section>
+      </div></section>
     </div>`;
+}
+
+function renderAdminSetup() {
+  app.innerHTML = `<div class="login-screen"><aside class="login-aside"><div class="login-aside-inner"><div class="brand"><span class="brand-mark">✦</span><span class="brand-copy"><strong>${esc(db.settings.schoolName)}</strong><span>ডিজিটাল স্কুল ব্যবস্থাপনা</span></span></div><h1>অ্যাডমিন সেটআপ<br/>প্রায় সম্পূর্ণ</h1><p>অ্যাকাউন্ট নিশ্চিত হলে একবারের সেটআপ কী দিয়ে এই বিদ্যালয়ের প্রথম অ্যাডমিন হিসেবে প্রবেশ করুন।</p></div></aside><section class="login-card-wrap"><form class="login-card" id="admin-setup-form"><span class="eyebrow" style="color:#47725d;border-color:#d9e8dc;background:#f3f8f4;margin-bottom:16px">প্রথম অ্যাডমিন যাচাই</span><h2>অ্যাডমিন সেটআপ সম্পন্ন করুন</h2><p>${esc(currentUser?.email || '')} দিয়ে প্রবেশ করা হয়েছে। আপনার নাম ও একবারের সেটআপ কী দিন।</p><div class="field"><label>অ্যাডমিনের নাম</label><input name="displayName" autocomplete="name" required minlength="2" value="${esc(currentUser?.user_metadata?.display_name || '')}" /></div><div class="field"><label>একবারের সেটআপ কী</label><input name="setupKey" type="password" autocomplete="off" required /></div><button class="btn btn-primary" type="submit" style="width:100%">সেটআপ সম্পন্ন করুন <span>→</span></button><button class="btn btn-quiet login-home" type="button" data-action="logout">লগআউট</button></form></section></div>`;
+}
+
+function renderPasswordRecovery() {
+  app.innerHTML = `<div class="login-screen"><aside class="login-aside"><div class="login-aside-inner"><div class="brand"><span class="brand-mark">✦</span><span class="brand-copy"><strong>${esc(db.settings.schoolName)}</strong><span>ডিজিটাল স্কুল ব্যবস্থাপনা</span></span></div><h1>নতুন পাসওয়ার্ড<br/>সেট করুন</h1><p>অ্যাকাউন্টের জন্য একটি নিরাপদ নতুন পাসওয়ার্ড বেছে নিন।</p></div></aside><section class="login-card-wrap"><form class="login-card" id="password-recovery-form"><h2>পাসওয়ার্ড পরিবর্তন</h2><p>${esc(currentUser?.email || '')}</p><div class="field"><label>নতুন পাসওয়ার্ড</label><input type="password" name="password" autocomplete="new-password" minlength="8" required /></div><div class="field"><label>পাসওয়ার্ড আবার লিখুন</label><input type="password" name="confirmPassword" autocomplete="new-password" minlength="8" required /></div><button class="btn btn-primary" type="submit" style="width:100%">পাসওয়ার্ড সংরক্ষণ করুন</button></form></section></div>`;
 }
 
 function navMarkup() {
@@ -237,7 +230,7 @@ function renderApp() {
       </aside>
       <section class="main-column">
         <header class="topbar"><div class="topbar-left"><button class="btn-icon mobile-menu" data-action="menu" aria-label="মেনু">☰</button><span class="crumb">প্রশাসন &nbsp;›&nbsp; <strong>${page.label}</strong></span></div>
-          <div class="topbar-tools"><label class="search-box"><span class="search-symbol">⌕</span><input id="global-search" type="search" placeholder="এই পাতায় খুঁজুন..." value="${esc(searchText)}" aria-label="খুঁজুন" /></label><span class="topbar-date">${prettyDate(localDateISO())}</span><div class="user-chip"><span class="avatar">অ</span><span class="user-meta"><strong>প্রশাসক</strong><span>সুপার অ্যাডমিন</span></span></div></div>
+          <div class="topbar-tools"><label class="search-box"><span class="search-symbol">⌕</span><input id="global-search" type="search" placeholder="এই পাতায় খুঁজুন..." value="${esc(searchText)}" aria-label="খুঁজুন" /></label><span class="topbar-date">${prettyDate(localDateISO())}</span><div class="user-chip"><span class="avatar">${esc(initials(currentProfile?.display_name || 'অ্যাডমিন'))}</span><span class="user-meta"><strong>${esc(currentProfile?.display_name || 'অ্যাডমিন')}</strong><span>সুপার অ্যাডমিন</span></span></div></div>
         </header>
         <main class="content" id="page-content">${renderCurrentPage()}</main>
       </section>
@@ -379,10 +372,10 @@ function renderDocuments() {
   const list = [...db.documents].filter(d => !q || `${d.name} ${d.category} ${d.note || ''}`.toLocaleLowerCase('bn').includes(q)).sort((a,b) => b.uploadedAt.localeCompare(a.uploadedAt));
   const rows = list.map(d => `<tr><td><div class="person-cell"><span class="avatar">▧</span><span><strong>${esc(d.name)}</strong><span>${esc(d.note || 'বিদ্যালয়ের নথি')}</span></span></div></td><td>${badge(d.category || 'সাধারণ','gray')}</td><td>${prettyDate(d.uploadedAt)}</td><td>${bn(Math.ceil(d.size/1024))} KB</td><td><div class="table-actions"><button class="table-action" title="ডাউনলোড" data-action="download-doc" data-id="${d.id}">⇩</button><button class="table-action delete" title="মুছুন" data-action="delete" data-type="documents" data-id="${d.id}">⌫</button></div></td></tr>`).join('');
   return `${pageHead('ডিজিটাল নথি', 'প্রয়োজনীয় ফাইল আপলোড, সংরক্ষণ ও ডাউনলোড করুন', `${exportButton('documents')}<button class="btn btn-primary btn-small" data-action="upload-docs">＋ নথি আপলোড</button>`)}
-    <section class="panel"><div class="panel-head"><div><h2>নথির সংগ্রহ</h2><p>PDF, ছবি, Word ও Excel ফাইল • প্রতি ফাইল সর্বোচ্চ ১ MB</p></div><span class="badge badge-gray">${bn(list.length)}টি ফাইল</span></div>
-      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>ফাইল</th><th>ধরন</th><th>আপলোড</th><th>আকার</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="panel-body"><div class="upload-zone"><div class="file-icon">⇧</div><strong>ডিজিটাল নথি এখানে গুছিয়ে রাখুন</strong><p>PDF, ছবি, Word বা Excel ফাইল বেছে নিন (সর্বোচ্চ ১ MB/ফাইল)।</p><button class="btn btn-outline btn-small" data-action="upload-docs">ফাইল বেছে নিন</button></div></div>`}
+    <section class="panel"><div class="panel-head"><div><h2>নথির সংগ্রহ</h2><p>PDF, ছবি, Word ও Excel ফাইল • প্রতি ফাইল সর্বোচ্চ ১০ MB</p></div><span class="badge badge-gray">${bn(list.length)}টি ফাইল</span></div>
+      ${list.length ? `<div class="table-wrap"><table><thead><tr><th>ফাইল</th><th>ধরন</th><th>আপলোড</th><th>আকার</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : `<div class="panel-body"><div class="upload-zone"><div class="file-icon">⇧</div><strong>ডিজিটাল নথি এখানে গুছিয়ে রাখুন</strong><p>PDF, ছবি, Word বা Excel ফাইল বেছে নিন (সর্বোচ্চ ১০ MB/ফাইল)।</p><button class="btn btn-outline btn-small" data-action="upload-docs">ফাইল বেছে নিন</button></div></div>`}
       <input id="document-files" class="hidden" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp" />
-      <div style="padding:12px 18px;color:#819087;font-size:10px;border-top:1px solid var(--line)">ফাইলগুলো এই ব্রাউজারের স্টোরেজে থাকে। অন্য ডিভাইসে নিতে JSON ব্যাকআপ ডাউনলোড করুন।</div>
+      <div style="padding:12px 18px;color:#819087;font-size:10px;border-top:1px solid var(--line)">ফাইলগুলো ব্যক্তিগত cloud storage-এ থাকে এবং অ্যাডমিন লগইন ছাড়া দেখা যায় না।</div>
     </section>`;
 }
 
@@ -391,11 +384,11 @@ function renderSettings() {
     <div class="settings-grid">
       <section class="panel"><div class="panel-head"><div><h2>বিদ্যালয়ের তথ্য</h2><p>পাবলিক পাতায় এই তথ্য দেখানো হবে</p></div></div><div class="panel-body"><form id="school-settings-form"><div class="field"><label>বিদ্যালয়ের নাম</label><input name="schoolName" required value="${esc(db.settings.schoolName)}" /></div><div class="field"><label>বিদ্যালয়ের মূলমন্ত্র</label><input name="motto" value="${esc(db.settings.motto)}" /></div><div class="form-grid"><div class="field"><label>শিক্ষাবর্ষ</label><input name="session" value="${esc(db.settings.session)}" /></div><div class="field"><label>যোগাযোগের ফোন</label><input name="phone" value="${esc(db.settings.phone)}" /></div></div><div class="form-grid"><div class="field"><label>ইমেইল</label><input name="email" type="email" value="${esc(db.settings.email)}" /></div><div class="field"><label>ঠিকানা</label><input name="address" value="${esc(db.settings.address)}" /></div></div><button class="btn btn-primary btn-small" type="submit">তথ্য সংরক্ষণ</button></form></div></section>
       <div style="display:grid;gap:16px">
-        <section class="panel"><div class="panel-head"><div><h2>অ্যাডমিন পাসওয়ার্ড</h2><p>লগইন নিরাপদ রাখতে পাসওয়ার্ড বদলান</p></div></div><div class="panel-body"><form id="password-form"><div class="field"><label>বর্তমান পাসওয়ার্ড</label><input type="password" name="currentPassword" autocomplete="current-password" required /></div><div class="field"><label>নতুন পাসওয়ার্ড</label><input type="password" name="newPassword" autocomplete="new-password" minlength="8" required /><small>কমপক্ষে ৮ অক্ষর।</small></div><div class="field"><label>নতুন পাসওয়ার্ড আবার লিখুন</label><input type="password" name="confirmPassword" autocomplete="new-password" minlength="8" required /></div><button class="btn btn-primary btn-small" type="submit">পাসওয়ার্ড বদলান</button></form></div></section>
-        <section class="panel"><div class="panel-head"><div><h2>ডেটা ব্যাকআপ</h2><p>সব তথ্য JSON ফাইলে সংরক্ষণ বা পুনরুদ্ধার করুন</p></div></div><div class="panel-body"><div class="settings-note"><strong>আপনার ডেটা এই ব্রাউজারে থাকে</strong>অন্য ডিভাইসে স্বয়ংক্রিয়ভাবে যায় না। নিয়মিত ব্যাকআপ ডাউনলোড করে রাখুন।</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn btn-outline btn-small" data-export="backup">⇩ ব্যাকআপ ডাউনলোড</button><button class="btn btn-outline btn-small" data-action="restore">⇧ ব্যাকআপ পুনরুদ্ধার</button><input id="restore-file" type="file" class="hidden" accept="application/json,.json" /></div></div></section>
+        <section class="panel"><div class="panel-head"><div><h2>অ্যাডমিন পাসওয়ার্ড</h2><p>${esc(currentUser?.email || '')}</p></div></div><div class="panel-body"><form id="password-form"><div class="field"><label>নতুন পাসওয়ার্ড</label><input type="password" name="newPassword" autocomplete="new-password" minlength="8" required /><small>কমপক্ষে ৮ অক্ষর।</small></div><div class="field"><label>নতুন পাসওয়ার্ড আবার লিখুন</label><input type="password" name="confirmPassword" autocomplete="new-password" minlength="8" required /></div><button class="btn btn-primary btn-small" type="submit">পাসওয়ার্ড বদলান</button></form></div></section>
+        <section class="panel"><div class="panel-head"><div><h2>ডেটা ব্যাকআপ</h2><p>স্কুলের রেকর্ড JSON ফাইলে সংরক্ষণ বা পুনরুদ্ধার করুন</p></div></div><div class="panel-body"><div class="settings-note"><strong>তথ্য cloud database-এ সিঙ্ক হয়</strong>এখান থেকে JSON রেকর্ড ডাউনলোড করে কপি রাখুন। ফাইলের নথি আলাদাভাবে download করুন।</div><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:14px"><button class="btn btn-outline btn-small" data-export="backup">⇩ ব্যাকআপ ডাউনলোড</button><button class="btn btn-outline btn-small" data-action="restore">⇧ ব্যাকআপ থেকে যোগ করুন</button><input id="restore-file" type="file" class="hidden" accept="application/json,.json" /></div></div></section>
       </div>
     </div>
-    <div class="settings-note" style="margin-top:16px"><strong>ডেমো ব্যবহারের সীমা</strong>এই static version-এ লগইন ও তথ্য শুধু এই ব্রাউজারের জন্য। বাস্তব ছাত্রছাত্রীর ব্যক্তিগত তথ্য ব্যবহারের আগে server-side authentication, নিরাপদ database, file storage এবং role-based access যুক্ত করুন।</div>`;
+    <div class="settings-note" style="margin-top:16px"><strong>নিরাপদ প্রবেশ</strong>স্কুলের ব্যক্তিগত তথ্য শুধু অ্যাডমিন লগইনের মাধ্যমে দেখা ও পরিবর্তন করা যায়।</div>`;
 }
 
 function classOptions(selected = '') {
@@ -426,48 +419,39 @@ function openEntityModal(type, id = '') {
   modalRoot.querySelector('input,select,textarea')?.focus();
 }
 
-function saveEntity(form) {
+async function saveEntity(form) {
   const type = form.dataset.type;
   const id = form.dataset.id;
   const values = Object.fromEntries(new FormData(form).entries());
-  let item = { ...values };
-  if (type === 'students') {
-    item.roll = Number(values.roll);
-    item.status = (id ? db.students.find(x=>x.id===id)?.status : 'সক্রিয়') || 'সক্রিয়';
-    item.phone = normalizePhone(item.phone);
-  }
-  if (type === 'fees') { item.due = Number(values.due); item.paid = Number(values.paid); }
+  const table = ({ fees:'fee_records' })[type] || type;
+  let item = { ...values, school_id:currentProfile.school_id };
+  if (type === 'students') item = { ...item, class_id:values.classId || null, roll:Number(values.roll), phone:normalizePhone(values.phone), status:id ? (db.students.find(x=>x.id===id)?.status || 'সক্রিয়') : 'সক্রিয়' };
   if (type === 'teachers') item.phone = normalizePhone(item.phone);
-  if (id) {
-    const index = db[type].findIndex(x => x.id === id);
-    if (index >= 0) db[type][index] = { ...db[type][index], ...item };
-  } else {
-    item.id = uid(type.slice(0,3));
-    db[type].unshift(item);
-  }
+  if (type === 'fees') item = { ...item, student_id:values.studentId, amount_due:Number(values.due), amount_paid:Number(values.paid), paid_at:values.date || null };
+  if (type === 'notices') item.is_published = true;
+  ['classId','studentId','due','paid','date'].forEach(key => delete item[key]);
+  const result = id ? await dbClient.from(table).update(item).eq('id', id) : await dbClient.from(table).insert(item);
+  if (result.error) { toast(backendError(result.error), true); return; }
   modalRoot.innerHTML = '';
-  if (saveDb(id ? 'তথ্য হালনাগাদ হয়েছে।' : 'নতুন তথ্য যোগ হয়েছে।')) render();
+  await refreshData(id ? 'তথ্য হালনাগাদ হয়েছে।' : 'নতুন তথ্য যোগ হয়েছে।');
 }
 
-function deleteEntity(type, id) {
+async function deleteEntity(type, id) {
   if (type === 'classes' && db.students.some(s => s.classId === id)) {
     toast('এই শ্রেণিতে শিক্ষার্থী আছে। আগে শিক্ষার্থীদের অন্য শ্রেণিতে স্থানান্তর করুন।', true);
     return;
   }
   const labels = { students:'শিক্ষার্থী', teachers:'শিক্ষক', classes:'শ্রেণি', fees:'ফি রেকর্ড', notices:'নোটিশ', documents:'নথি' };
   if (!window.confirm(`এই ${labels[type] || 'তথ্য'} মুছে ফেলবেন?`)) return;
-  if (type === 'students') {
-    db.students = db.students.filter(s => s.id !== id);
-    db.fees = db.fees.filter(f => f.studentId !== id);
-    for (const day of Object.keys(db.attendance)) delete db.attendance[day][id];
-  } else if (type === 'teachers') {
-    const teacher = db.teachers.find(t => t.id === id);
-    db.teachers = db.teachers.filter(t => t.id !== id);
-    db.classes.forEach(c => { if (teacher && c.teacher === teacher.name) c.teacher = 'নির্ধারিত নয়'; });
-  } else if (type === 'documents') {
-    db.documents = db.documents.filter(d => d.id !== id);
-  } else db[type] = db[type].filter(x => x.id !== id);
-  if (saveDb('তথ্য মুছে ফেলা হয়েছে।')) render();
+  if (type === 'documents') {
+    const doc = db.documents.find(x => x.id === id);
+    const { error: storageError } = await dbClient.storage.from('school-documents').remove([doc.storagePath]);
+    if (storageError) return toast(backendError(storageError), true);
+  }
+  const table = ({ fees:'fee_records' })[type] || type;
+  const { error } = await dbClient.from(table).delete().eq('id', id);
+  if (error) return toast(backendError(error), true);
+  await refreshData('তথ্য মুছে ফেলা হয়েছে।');
 }
 
 function downloadBlob(blob, filename) {
@@ -476,7 +460,13 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 function exportJSON() {
-  const file = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json;charset=utf-8' });
+  const backup = {
+    format:'school-management-backup-v1', exportedAt:new Date().toISOString(), school:db.settings,
+    classes:db.classes, students:db.students, teachers:db.teachers,
+    attendance:Object.entries(db.attendance).flatMap(([date, values]) => Object.entries(values).map(([studentId,status]) => ({ studentId, date, status }))),
+    fees:db.fees, notices:db.notices.map(({ id,title,date,type,body }) => ({ id,title,date,type,body }))
+  };
+  const file = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json;charset=utf-8' });
   downloadBlob(file, `school-backup-${localDateISO()}.json`);
   toast('JSON ব্যাকআপ ডাউনলোড হচ্ছে।');
 }
@@ -509,19 +499,28 @@ async function storeDocuments(files) {
   let added = 0;
   for (const file of files) {
     if (!allowed.test(file.name)) { toast(`${file.name}: এই ফাইলের ধরন সমর্থিত নয়।`, true); continue; }
-    if (file.size > 1024 * 1024) { toast(`${file.name}: ফাইলটি ১ MB-এর চেয়ে বড়।`, true); continue; }
+    if (file.size > 10 * 1024 * 1024) { toast(`${file.name}: ফাইলটি ১০ MB-এর চেয়ে বড়।`, true); continue; }
     try {
-      const dataUrl = await readFileAsDataURL(file);
-      db.documents.unshift({ id: uid('doc'), name: file.name, category: file.type.includes('image') ? 'ছবি' : file.name.split('.').pop().toUpperCase(), note: '', uploadedAt: localDateISO(), size: file.size, mime: file.type || 'application/octet-stream', dataUrl });
+      const safeName = file.name.replace(/[^\p{L}\p{N}._-]+/gu, '_');
+      const path = `${currentProfile.school_id}/${crypto.randomUUID()}-${safeName}`;
+      const { error: uploadError } = await dbClient.storage.from('school-documents').upload(path, file, { contentType:file.type || 'application/octet-stream', upsert:false });
+      if (uploadError) throw uploadError;
+      const { error: rowError } = await dbClient.from('documents').insert({ school_id:currentProfile.school_id, name:file.name, category:file.type.startsWith('image/') ? 'ছবি' : file.name.split('.').pop().toUpperCase(), note:'', storage_path:path, size_bytes:file.size, mime_type:file.type || 'application/octet-stream' });
+      if (rowError) {
+        await dbClient.storage.from('school-documents').remove([path]);
+        throw rowError;
+      }
       added++;
-    } catch (e) { toast(`${file.name}: ফাইল পড়া যায়নি।`, true); }
+    } catch (e) { toast(`${file.name}: ${backendError(e)}`, true); }
   }
-  if (added && saveDb(`${bn(added)}টি নথি সংরক্ষণ হয়েছে।`)) render();
+  if (added) await refreshData(`${bn(added)}টি নথি সংরক্ষণ হয়েছে।`);
 }
-function downloadDocument(id) {
+async function downloadDocument(id) {
   const doc = db.documents.find(d => d.id === id);
   if (!doc) return toast('নথিটি পাওয়া যায়নি।', true);
-  const a = document.createElement('a'); a.href = doc.dataUrl; a.download = doc.name; a.click();
+  const { data, error } = await dbClient.storage.from('school-documents').createSignedUrl(doc.storagePath, 60, { download:doc.name });
+  if (error) return toast(backendError(error), true);
+  const a = document.createElement('a'); a.href = data.signedUrl; a.target = '_blank'; a.rel = 'noopener'; a.download = doc.name; a.click();
 }
 
 function handleExport(type) {
@@ -534,30 +533,61 @@ async function handleSubmit(event) {
   if (!form.matches('form')) return;
   event.preventDefault();
   if (form.id === 'login-form') {
-    const values = new FormData(form);
-    const email = String(values.get('email') || '').trim().toLowerCase();
-    const password = String(values.get('password') || '');
-    const admin = db.admin;
-    if (email === String(admin.email).toLowerCase() && await digest(`${admin.salt}:${password}`) === admin.hash) {
-      sessionStorage.setItem('alokito_admin_session','active');
-      currentPage = 'dashboard'; render(); toast('স্বাগতম, অ্যাডমিন।');
-    } else toast('ইমেইল অথবা পাসওয়ার্ড সঠিক নয়।', true);
+    const values = Object.fromEntries(new FormData(form).entries());
+    const { data, error } = await dbClient.auth.signInWithPassword({ email:String(values.email).trim().toLowerCase(), password:String(values.password) });
+    if (error) return toast(backendError(error), true);
+    currentUser = data.user;
+    try {
+      await loadProfile();
+      if (isLoggedIn()) { await loadSchoolData(); currentPage='dashboard'; render(); toast('স্বাগতম, ' + currentProfile.display_name + '।'); }
+      else render();
+    } catch (e) { toast(backendError(e), true); }
     return;
   }
-  if (form.id === 'entity-form') { saveEntity(form); return; }
+  if (form.id === 'signup-form') {
+    const values = Object.fromEntries(new FormData(form).entries());
+    const { data, error } = await dbClient.auth.signUp({ email:String(values.email).trim().toLowerCase(), password:String(values.password), options:{ data:{ display_name:String(values.displayName).trim() } } });
+    if (error) return toast(backendError(error), true);
+    if (data.session && data.user) { currentUser=data.user; currentProfile=null; render(); toast('অ্যাকাউন্ট তৈরি হয়েছে। এখন একবারের সেটআপ কী দিন।'); }
+    else { authMode='login'; render(); toast('অ্যাকাউন্ট তৈরি হয়েছে। ইমেইলে পাঠানো লিংক নিশ্চিত করে লগইন করুন।'); }
+    return;
+  }
+  if (form.id === 'admin-setup-form') {
+    const values = Object.fromEntries(new FormData(form).entries());
+    const { error } = await dbClient.rpc('claim_school_admin', { p_token:String(values.setupKey).trim(), p_display_name:String(values.displayName).trim() });
+    if (error) return toast(backendError(error), true);
+    try { await loadProfile(); await loadSchoolData(); currentPage='dashboard'; render(); toast('অ্যাডমিন সেটআপ সম্পন্ন হয়েছে।'); }
+    catch (e) { toast(backendError(e), true); }
+    return;
+  }
+  if (form.id === 'password-recovery-form') {
+    const values = Object.fromEntries(new FormData(form).entries());
+    if (String(values.password).length < 8) return toast('পাসওয়ার্ড কমপক্ষে ৮ অক্ষরের হতে হবে।', true);
+    if (values.password !== values.confirmPassword) return toast('পাসওয়ার্ড দুটি মিলছে না।', true);
+    const { error } = await dbClient.auth.updateUser({ password:String(values.password) });
+    if (error) return toast(backendError(error), true);
+    passwordRecovery=false;
+    try { await loadProfile(); if (isLoggedIn()) { await loadSchoolData(); currentPage='dashboard'; } else currentPage='login'; render(); toast('পাসওয়ার্ড বদলানো হয়েছে।'); }
+    catch (e) { toast(backendError(e), true); }
+    return;
+  }
+  if (form.id === 'entity-form') { await saveEntity(form); return; }
   if (form.id === 'school-settings-form') {
     const values = Object.fromEntries(new FormData(form).entries());
-    db.settings = { ...db.settings, ...values };
-    if (saveDb('বিদ্যালয়ের তথ্য সংরক্ষণ হয়েছে।')) render();
+    const payload = { name:values.schoolName, motto:values.motto, session:values.session, phone:values.phone, email:values.email, address:values.address };
+    const { error } = await dbClient.from('schools').update(payload).eq('id', currentProfile.school_id);
+    if (error) return toast(backendError(error), true);
+    await loadPublicData();
+    await refreshData('বিদ্যালয়ের তথ্য সংরক্ষণ হয়েছে।');
     return;
   }
   if (form.id === 'password-form') {
     const values = Object.fromEntries(new FormData(form).entries());
-    if (await digest(`${db.admin.salt}:${values.currentPassword}`) !== db.admin.hash) return toast('বর্তমান পাসওয়ার্ড সঠিক নয়।', true);
-    if (values.newPassword.length < 8) return toast('নতুন পাসওয়ার্ড কমপক্ষে ৮ অক্ষরের হতে হবে।', true);
+    if (String(values.newPassword).length < 8) return toast('নতুন পাসওয়ার্ড কমপক্ষে ৮ অক্ষরের হতে হবে।', true);
     if (values.newPassword !== values.confirmPassword) return toast('নতুন পাসওয়ার্ড দুটি মিলছে না।', true);
-    db.admin = await makeAdmin(values.newPassword);
-    if (saveDb('অ্যাডমিন পাসওয়ার্ড বদলানো হয়েছে।')) form.reset();
+    const { error } = await dbClient.auth.updateUser({ password:String(values.newPassword) });
+    if (error) return toast(backendError(error), true);
+    form.reset(); toast('অ্যাডমিন পাসওয়ার্ড বদলানো হয়েছে।');
   }
 }
 
@@ -565,24 +595,40 @@ async function restoreBackup(file) {
   if (!file) return;
   try {
     const contents = JSON.parse(await file.text());
-    const required = ['settings','classes','students','teachers','attendance','fees','notices','documents','admin'];
-    if (!contents || required.some(key => !(key in contents)) || !Array.isArray(contents.students)) throw new Error('invalid');
-    if (!window.confirm('বর্তমান ব্রაუნজারের সব ডেটা ব্যাকআপের ডেটা দিয়ে বদলাবেন?')) return;
-    db = contents;
-    if (saveDb('ব্যাকআপ পুনরুদ্ধার হয়েছে।')) render();
-  } catch (e) { toast('ব্যাকআপ ফাইলটি পড়া যায়নি বা ফরম্যাট সঠিক নয়।', true); }
+    if (contents?.format !== 'school-management-backup-v1' || !Array.isArray(contents.students) || !Array.isArray(contents.classes)) throw new Error('invalid');
+    if (!window.confirm('ব্যাকআপের রেকর্ডগুলো বর্তমান স্কুলের তথ্যের সঙ্গে যোগ/হালনাগাদ করবেন?')) return;
+    const school_id = currentProfile.school_id;
+    if (contents.school) {
+      const s = contents.school;
+      const { error } = await dbClient.from('schools').update({ name:s.schoolName, motto:s.motto || '', session:s.session || '', phone:s.phone || '', email:s.email || '', address:s.address || '' }).eq('id', school_id);
+      if (error) throw error;
+    }
+    const upsert = async (table, rows, conflict='id') => {
+      if (!rows?.length) return;
+      const { error } = await dbClient.from(table).upsert(rows.map(row => ({ ...row, school_id })), { onConflict:conflict });
+      if (error) throw error;
+    };
+    await upsert('classes', contents.classes.map(({ id,name,teacher,room }) => ({ id,name,teacher,room })));
+    await upsert('teachers', (contents.teachers || []).map(({ id,name,subject,phone,email }) => ({ id,name,subject,phone,email })));
+    await upsert('students', contents.students.map(({ id,name,guardian,classId,roll,phone,admission,status }) => ({ id,name,guardian,class_id:classId || null,roll,phone,admission,status })));
+    await upsert('fee_records', (contents.fees || []).map(({ id,studentId,month,due,paid,date }) => ({ id,student_id:studentId,month,amount_due:due,amount_paid:paid,paid_at:date || null })), 'school_id,student_id,month');
+    await upsert('attendance', (contents.attendance || []).map(({ studentId,date,status }) => ({ student_id:studentId,attendance_date:date,status })), 'school_id,student_id,attendance_date');
+    await upsert('notices', (contents.notices || []).map(({ id,title,date,type,body }) => ({ id,title,date,type,body,is_published:true })));
+    await loadPublicData();
+    await refreshData('ব্যাকআপের রেকর্ড যোগ হয়েছে। নথির ফাইল আলাদাভাবে আপলোড করতে হবে।');
+  } catch (e) { toast('ব্যাকআপ ফাইলটি পড়া যায়নি বা ফরম্যাট সঠিক নয়: ' + backendError(e), true); }
 }
 
-function handleAttendanceChange(select) {
+async function handleAttendanceChange(select) {
   const id = select.dataset.attendance;
-  db.attendance[attendanceDate] ||= {};
-  if (select.value === 'unmarked') delete db.attendance[attendanceDate][id];
-  else db.attendance[attendanceDate][id] = select.value;
-  saveDb();
-  render();
+  let result;
+  if (select.value === 'unmarked') result = await dbClient.from('attendance').delete().eq('school_id', currentProfile.school_id).eq('student_id', id).eq('attendance_date', attendanceDate);
+  else result = await dbClient.from('attendance').upsert({ school_id:currentProfile.school_id, student_id:id, attendance_date:attendanceDate, status:select.value }, { onConflict:'school_id,student_id,attendance_date' });
+  if (result.error) return toast(backendError(result.error), true);
+  await refreshData();
 }
 
-app.addEventListener('click', event => {
+app.addEventListener('click', async event => {
   const target = event.target.closest('[data-action],[data-page],[data-nav],[data-export]');
   if (!target) return;
   if (target.dataset.page) { event.preventDefault(); goTo(target.dataset.page); return; }
@@ -591,16 +637,28 @@ app.addEventListener('click', event => {
   const action = target.dataset.action;
   if (action === 'login') { currentPage='login'; render(); }
   if (action === 'home') { currentPage='home'; render(); }
-  if (action === 'logout') { sessionStorage.removeItem('alokito_admin_session'); currentPage='home'; render(); toast('আপনি লগআউট করেছেন।'); }
+  if (action === 'logout') {
+    const { error } = await dbClient.auth.signOut();
+    if (error) return toast(backendError(error), true);
+    currentUser=null; currentProfile=null; currentPage='home'; render(); toast('আপনি লগআউট করেছেন।');
+  }
+  if (action === 'toggle-auth') { authMode = authMode === 'login' ? 'signup' : 'login'; render(); }
+  if (action === 'reset-password') {
+    const email = window.prompt('আপনার অ্যাকাউন্টের ইমেইল লিখুন:');
+    if (!email) return;
+    const { error } = await dbClient.auth.resetPasswordForEmail(email.trim(), { redirectTo:window.location.href.split('#')[0] });
+    if (error) toast(backendError(error), true); else toast('পাসওয়ার্ড বদলানোর লিংক ইমেইলে পাঠানো হয়েছে।');
+  }
   if (action === 'menu') document.querySelector('.sidebar')?.classList.toggle('open');
   if (action === 'add') openEntityModal(target.dataset.type);
   if (action === 'edit') openEntityModal(target.dataset.type,target.dataset.id);
   if (action === 'delete') deleteEntity(target.dataset.type,target.dataset.id);
   if (action === 'close-modal') modalRoot.innerHTML='';
   if (action === 'mark-all-present') {
-    db.attendance[attendanceDate] ||= {};
-    db.students.forEach(s => { db.attendance[attendanceDate][s.id]='present'; });
-    if (saveDb('সব শিক্ষার্থীকে উপস্থিত চিহ্নিত করা হয়েছে।')) render();
+    const rows = db.students.map(s => ({ school_id:currentProfile.school_id, student_id:s.id, attendance_date:attendanceDate, status:'present' }));
+    if (!rows.length) return toast('আগে শিক্ষার্থীর তথ্য যোগ করুন।', true);
+    const { error } = await dbClient.from('attendance').upsert(rows, { onConflict:'school_id,student_id,attendance_date' });
+    if (error) toast(backendError(error), true); else await refreshData('সব শিক্ষার্থীকে উপস্থিত চিহ্নিত করা হয়েছে।');
   }
   if (action === 'upload-docs') document.querySelector('#document-files')?.click();
   if (action === 'download-doc') downloadDocument(target.dataset.id);
@@ -630,6 +688,5 @@ modalRoot.addEventListener('click', event => {
 modalRoot.addEventListener('click', event => {
   if (event.target.closest('[data-action="close-modal"]')) modalRoot.innerHTML='';
 });
-modalRoot.addEventListener('submit', event => { if (event.target.id==='entity-form') { event.preventDefault(); saveEntity(event.target); } });
 
 initialize();
