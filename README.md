@@ -1,37 +1,46 @@
 # আলোকিত প্রাথমিক বিদ্যালয় — School Management
 
-বাংলা ভাষার একটি responsive, GitHub Pages-এ চালানো যায় এমন স্কুল ম্যানেজমেন্ট ওয়েব অ্যাপ। এতে পাবলিক স্কুল পাতা এবং অ্যাডমিন পোর্টাল আছে। শিক্ষার্থী, শিক্ষক, শ্রেণি, উপস্থিতি, ফি, নোটিশ ও নথি পরিচালনা করা যায়। JSON ব্যাকআপ এবং CSV ডাউনলোডও আছে।
+বাংলা ভাষার paperless school management web app। Admin login দিয়ে শিক্ষার্থী, শিক্ষক, শ্রেণি, উপস্থিতি, ফি, নোটিশ, স্কুলের পরিচিতি এবং ব্যক্তিগত নথি পরিচালনা করা যায়। রেকর্ড Supabase database-এ এবং ফাইল private Supabase Storage-এ থাকে।
+
+## Backend
+
+এই আলাদা school project-এর Supabase backend ইতিমধ্যে তৈরি ও configure করা আছে। Browser-এ শুধু Supabase publishable key ব্যবহার হয়; private service-role key কখনো frontend-এ রাখা হয়নি। সব private school table Row Level Security (RLS) দিয়ে সুরক্ষিত।
+
+Database schema ও পরবর্তী index/policy পরিবর্তনগুলো supabase/migrations/ ফোল্ডারে আছে। Storage bucket private এবং প্রতি ফাইলের সীমা ১০ MB।
 
 ## চালানো
 
-`index.html` খুলুন, অথবা GitHub Pages দিয়ে প্রকাশ করুন। আলাদা build step বা package install লাগে না।
+Hosted static server ব্যবহার করুন, অথবা repository root-এ local server চালান:
 
-## GitHub Pages প্রকাশ
+    python -m http.server 8000
 
-এই repository-তে `.github/workflows/deploy.yml` রাখা হয়েছে। GitHub-এর **Settings → Pages** থেকে **Source: GitHub Actions** নির্বাচন করে **Actions → Deploy school site → Run workflow** চাপলে সাইটটি প্রকাশ হবে। Workflow শুধু হাতে চালালে deploy করে; প্রতি push-এ নিজে থেকে প্রকাশ করে না।
+তারপর http://localhost:8000 খুলুন। সরাসরি file:// দিয়ে খুললে Supabase authentication redirect কাজ নাও করতে পারে।
 
-GitHub Pages সাইট public হয়, যদিও repository private থাকতে পারে (আপনার GitHub plan-এ private repository Pages সমর্থিত হলে)। প্রকাশের আগে ডেমো লগইন ও নিরাপত্তার সীমাবদ্ধতা বিবেচনা করুন।
+## প্রথম অ্যাডমিন অ্যাকাউন্ট
 
-## অ্যাডমিন ডেমো লগইন
+1. সাইটে Admin Login খুলুন এবং “প্রথমবার? অ্যাডমিন অ্যাকাউন্ট তৈরি করুন” নির্বাচন করুন।
+2. নিজের নাম, ইমেইল ও অন্তত ৮ অক্ষরের পাসওয়ার্ড দিয়ে account তৈরি করুন।
+3. Supabase-এ email confirmation চালু থাকলে ইমেইলের link খুলে account নিশ্চিত করুন, তারপর login করুন।
+4. login-এর পর একবারের Admin Setup Key দিয়ে প্রথম অ্যাডমিন setup সম্পন্ন করুন। এই key শুধু একবার কাজ করে এবং সফল setup-এর পর server থেকে মুছে যায়।
+5. Setup Key ব্যক্তিগতভাবে সংরক্ষণ করুন; এটি GitHub repository বা browser source-এ রাখা হয়নি।
 
-- ইমেইল: `admin@aloron.edu.bd`
-- পাসওয়ার্ড: `School@123`
+কোনো demo password বা পূর্বভরা শিক্ষার্থী/শিক্ষক তথ্য নেই। Admin password Supabase Auth-এ সংরক্ষিত হয়। Login পাতা থেকে password recovery email চাওয়া যায়।
 
-প্রথম লগইনের পর **সেটিংস** থেকে পাসওয়ার্ড বদলে নিন।
+## Supabase Auth redirect configuration
 
-## ডেটা ও নিরাপত্তা
+Supabase Dashboard → Authentication → URL Configuration-এ local development-এর জন্য http://localhost:8000 যোগ করুন। GitHub Pages ব্যবহার করলে আপনার নির্দিষ্ট Pages URL-ও Site URL এবং allowed redirect URLs-এ যোগ করুন। Email confirmation ও password recovery link সঠিক host-এ ফেরার জন্য এটি দরকার।
 
-এই প্রাথমিক সংস্করণে ডেটা ব্রাউজারের `localStorage`-এ থাকে। তাই একই ব্রাউজার/ডিভাইসে দেখা যায়; অন্য কম্পিউটারে নিজে থেকে সিঙ্ক হয় না। JSON ব্যাকআপ নিয়মিত ডাউনলোড করে নিরাপদ স্থানে রাখুন। নথি ব্রাউজারের স্টোরেজ-সীমার মধ্যে থাকে।
+## GitHub Pages
 
-GitHub Pages কেবল static website পরিবেশন করে। ডেমো অ্যাডমিন লগইন তথ্য পৃষ্ঠায় দেখানো হয় এবং তথ্য ব্রাউজারেই থাকে; এটি production authentication নয়। বাস্তব স্কুলে একাধিক ব্যবহারকারী, দূরবর্তী ডেটা সংরক্ষণ, role-based access, audit log ও নিরাপদ file storage চালু করতে server/backend (যেমন Supabase) যুক্ত করতে হবে। এখানে শিক্ষার্থীর বাস্তব ব্যক্তিগত তথ্য দেবেন না।
+GitHub Actions workflow-টি হাতে চালিয়ে Pages প্রকাশ করা যায়, তবে public site URL তৈরি হয়। বিদ্যালয়ের ব্যক্তিগত তথ্য ব্যবহারের আগে প্রকল্পের GitHub Pages visibility ও Supabase Auth redirect URL ঠিক করে নিতে হবে। Deployment workflow শুধু workflow_dispatch-এ চলে; প্রতি push-এ নিজে deploy করে না।
 
-## অন্তর্ভুক্ত মডিউল
+## পরিচালনা ও backup
 
-- ড্যাশবোর্ড ও সারাংশ
-- শিক্ষার্থী/শিক্ষক/শ্রেণি তৈরি, সম্পাদনা, মুছে ফেলা
-- দৈনিক উপস্থিতি
-- ফি রেকর্ড
-- নোটিশ প্রকাশ
-- নথি আপলোড ও ডাউনলোড
-- CSV export, পূর্ণ JSON backup এবং restore
-- বিদ্যালয়ের তথ্য ও অ্যাডমিন পাসওয়ার্ড সেটিংস
+- শিক্ষার্থী, শিক্ষক, শ্রেণি, উপস্থিতি, ফি, নোটিশ ও স্কুল পরিচিতি তৈরি, সম্পাদনা এবং মুছে ফেলা যায়।
+- CSV report এবং JSON school-data backup download করা যায়; backup থেকে records যোগ/হালনাগাদ করা যায়।
+- Documents private storage-এ upload/download/delete হয়। JSON backup-এ document file bytes থাকে না; নথি আলাদাভাবে download করতে হবে।
+- নতুন তথ্য cloud database-এ save হয়, তাই একই অ্যাডমিন account দিয়ে অন্য ডিভাইস থেকেও দেখা যায়।
+
+## নিরাপত্তা
+
+Supabase RLS admin-কে তার school-এর records-এ সীমাবদ্ধ রাখে। প্রথম admin claim-এর জন্য authenticated session ও one-time setup key লাগে। Browser configuration-এ project URL, school ID এবং publishable key আছে; এগুলো client-side use-এর জন্য। service-role key কখনো repository বা frontend-এ যোগ করবেন না।
