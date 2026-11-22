@@ -688,5 +688,6 @@ modalRoot.addEventListener('click', event => {
 modalRoot.addEventListener('click', event => {
   if (event.target.closest('[data-action="close-modal"]')) modalRoot.innerHTML='';
 });
+modalRoot.addEventListener('submit', event => { handleSubmit(event); });
 
 initialize();
