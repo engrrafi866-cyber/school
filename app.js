@@ -8,6 +8,7 @@ let authMode = 'login';
 let passwordRecovery = false;
 let currentPage = 'home';
 let searchText = '';
+let ipemisProfile = null;
 let attendanceDate = localDateISO();
 
 const app = document.querySelector('#app');
@@ -87,6 +88,10 @@ async function loadSchoolData() {
   db.documents = rows.documents.map(x => ({ id:x.id, name:x.name, category:x.category, note:x.note, storagePath:x.storage_path, uploadedAt:x.uploaded_at.slice(0,10), size:Number(x.size_bytes), mime:x.mime_type }));
 }
 async function initialize() {
+  try {
+    const response = await fetch('data/ipemis-school-profile.json', { cache: 'no-store' });
+    if (response.ok) ipemisProfile = await response.json();
+  } catch (error) { console.info('IPEMIS snapshot unavailable', error); }
   dbClient.auth.onAuthStateChange((event, session) => {
     if (event === 'PASSWORD_RECOVERY') {
       window.setTimeout(() => { currentUser=session?.user || null; passwordRecovery=true; render(); }, 0);
@@ -144,7 +149,7 @@ function renderPublic() {
     <div class="public-site">
       <header class="public-nav">
         <a class="brand" href="#home" data-nav="home">
-          <span class="brand-mark">✦</span><span class="brand-copy"><strong>${esc(db.settings.schoolName)}</strong><span>প্রাথমিক শিক্ষা • ঢাকা</span></span>
+          <span class="brand-mark">✦</span><span class="brand-copy"><strong>${esc(db.settings.schoolName)}</strong><span>প্রাথমিক শিক্ষা • রাজশাহী, বাঘা</span></span>
         </a>
         <nav class="public-links"><a href="#school">আমাদের বিদ্যালয়</a><a href="#facilities">সুবিধাসমূহ</a><a href="#public-notices">নোটিশ</a></nav>
         <button class="btn btn-primary" data-action="login">অ্যাডমিন লগইন <span aria-hidden="true">→</span></button>
@@ -158,6 +163,16 @@ function renderPublic() {
           <div class="hero-actions"><a class="btn btn-primary" href="#public-notices">সর্বশেষ নোটিশ দেখুন <span>↗</span></a><a class="btn btn-outline" href="#facilities">বিদ্যালয় সম্পর্কে</a></div>
         </div>
         <div class="hero-illustration" aria-hidden="true"><div class="school-illustration"><div class="school-flag"></div><div class="school-roof"></div><div class="school-body"><div class="school-window"></div><div class="school-door"></div><div class="school-window"></div></div><div class="school-base"></div></div></div>
+      </section>
+      <section class="section" id="ipemis-profile">
+        <div class="section-heading"><div><h2>IPEMIS বিদ্যালয় পরিচিতি</h2><p>সরকারি পোর্টালের প্রোফাইল স্ক্রিনশট থেকে সংরক্ষিত তথ্য; এটি লাইভ সিঙ্ক নয়।</p></div></div>
+        ${ipemisProfile ? `<div class="feature-grid">${[
+          ['স্কুল কোড', ipemisProfile.schoolCode], ['ইএমআইএস কোড', ipemisProfile.emisCode],
+          ['বিভাগ', ipemisProfile.division], ['জেলা', ipemisProfile.district],
+          ['উপজেলা', ipemisProfile.upazila], ['বিদ্যালয়ের ধরন', ipemisProfile.ipemisSchoolCategory],
+          ['বিদ্যালয়ের গ্রেড', ipemisProfile.schoolGrade], ['অনুমোদিত পদ', ipemisProfile.approvedPosts],
+          ['শূন্য পদ', ipemisProfile.vacantPosts], ['প্রোফাইল সম্পূর্ণ', ipemisProfile.profileCompletionPercent + '%']
+        ].map(([label, value]) => `<article class="feature-card"><h3>${esc(label)}</h3><p>${esc(value ?? '—')}</p></article>`).join('')}</div>` : '<p>প্রোফাইল তথ্য এখন পাওয়া যাচ্ছে না।</p>'}
       </section>
       <section class="public-stats" aria-label="বিদ্যালয়ের পরিসংখ্যান">
         <div class="public-stat"><strong>১ম–৫ম</strong><span>প্রাথমিক শ্রেণি</span></div>
