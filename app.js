@@ -157,7 +157,7 @@ function renderPublic() {
       <section class="hero" id="school">
         <span class="hero-spark one">✦</span><span class="hero-spark two">✧</span>
         <div class="hero-content">
-          <span class="eyebrow"><i class="eyebrow-dot"></i> ${esc(db.settings.session)} • ভর্তি চলছে</span>
+          <span class="eyebrow"><i class="eyebrow-dot"></i> ${esc(db.settings.session)} • বিদ্যালয় পরিচিতি</span>
           <h1>শেখার আনন্দে<br/>গড়ি সুন্দর আগামী</h1>
           <p>${esc(db.settings.motto)} — প্রতিটি শিশুর কৌতূহল, মেধা ও সম্ভাবনাকে যত্নে বিকশিত করাই আমাদের অঙ্গীকার।</p>
           <div class="hero-actions"><a class="btn btn-primary" href="#public-notices">সর্বশেষ নোটিশ দেখুন <span>↗</span></a><a class="btn btn-outline" href="#facilities">বিদ্যালয় সম্পর্কে</a></div>
@@ -175,10 +175,10 @@ function renderPublic() {
         ].map(([label, value]) => `<article class="feature-card"><h3>${esc(label)}</h3><p>${esc(value ?? '—')}</p></article>`).join('')}</div>` : '<p>প্রোফাইল তথ্য এখন পাওয়া যাচ্ছে না।</p>'}
       </section>
       <section class="public-stats" aria-label="বিদ্যালয়ের পরিসংখ্যান">
-        <div class="public-stat"><strong>১ম–৫ম</strong><span>প্রাথমিক শ্রেণি</span></div>
-        <div class="public-stat"><strong>সহায়ক</strong><span>অভিজ্ঞ শিক্ষকবৃন্দ</span></div>
-        <div class="public-stat"><strong>নিরাপদ</strong><span>শিশুবান্ধব পরিবেশ</span></div>
-        <div class="public-stat"><strong>১০০%</strong><span>শিশুবান্ধব পরিবেশ</span></div>
+        <div class="public-stat"><strong>${esc(ipemisProfile?.schoolCode || "—")}</strong><span>স্কুল কোড</span></div>
+        <div class="public-stat"><strong>${esc(ipemisProfile?.schoolGrade || "—")}</strong><span>বিদ্যালয়ের গ্রেড</span></div>
+        <div class="public-stat"><strong>${esc(ipemisProfile?.approvedPosts ?? "—")}</strong><span>অনুমোদিত পদ</span></div>
+        <div class="public-stat"><strong>${esc(ipemisProfile ? ipemisProfile.profileCompletionPercent + "%" : "—")}</strong><span>IPEMIS প্রোফাইল সম্পূর্ণ</span></div>
       </section>
       <section class="section" id="facilities">
         <div class="section-heading"><div><h2>শেখার সুন্দর পরিবেশ</h2><p>শিশুদের প্রতিদিনের জন্য নিরাপদ, আনন্দময় ও যত্নশীল একটি বিদ্যালয়</p></div></div>
