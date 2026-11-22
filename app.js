@@ -245,7 +245,7 @@ function renderApp() {
       </aside>
       <section class="main-column">
         <header class="topbar"><div class="topbar-left"><button class="btn-icon mobile-menu" data-action="menu" aria-label="মেনু">☰</button><span class="crumb">প্রশাসন &nbsp;›&nbsp; <strong>${page.label}</strong></span></div>
-          <div class="topbar-tools"><label class="search-box"><span class="search-symbol">⌕</span><input id="global-search" type="search" placeholder="এই পাতায় খুঁজুন..." value="${esc(searchText)}" aria-label="খুঁজুন" /></label><span class="topbar-date">${prettyDate(localDateISO())}</span><div class="user-chip"><span class="avatar">${esc(initials(currentProfile?.display_name || 'অ্যাডমিন'))}</span><span class="user-meta"><strong>${esc(currentProfile?.display_name || 'অ্যাডমিন')}</strong><span>সুপার অ্যাডমিন</span></span></div></div>
+          <div class="topbar-tools"><label class="search-box"><span class="search-symbol">⌕</span><input id="global-search" type="search" placeholder="এই পাতায় খুঁজুন..." value="${esc(searchText)}" aria-label="খুঁজুন" /></label><span class="topbar-date">${prettyDate(localDateISO())}</span><div class="user-chip"><span class="avatar">${esc(initials(currentProfile?.display_name || 'অ্যাডমিন'))}</span><span class="user-meta"><strong>${esc(currentProfile?.display_name || 'অ্যাডমিন')}</strong><span>সুপার অ্যাডমিন</span></span></div><button class="btn btn-outline btn-small" type="button" data-action="logout" aria-label="অ্যাকাউন্ট থেকে লগআউট">লগআউট ↪</button></div>
         </header>
         <main class="content" id="page-content">${renderCurrentPage()}</main>
       </section>
@@ -650,7 +650,7 @@ app.addEventListener('click', async event => {
   if (action === 'logout') {
     const { error } = await dbClient.auth.signOut();
     if (error) return toast(backendError(error), true);
-    currentUser=null; currentProfile=null; currentPage='home'; render(); toast('আপনি লগআউট করেছেন।');
+    currentUser=null; currentProfile=null; passwordRecovery=false; db=emptyDatabase(); currentPage='home'; await loadPublicData().catch(() => {}); render(); toast('নিরাপদে লগআউট হয়েছে।');
   }
   if (action === 'toggle-auth') { authMode = authMode === 'login' ? 'signup' : 'login'; render(); }
   if (action === 'reset-password') {
