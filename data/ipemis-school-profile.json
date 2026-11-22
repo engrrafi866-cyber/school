@@ -1,9 +1,20 @@
 {
   "schoolName": "Sun Child Care Academy Non Government Primary School",
+  "ipemisDisplayName": "SUN CHILD CARE NON GOVT PRIMARY SCHOOL",
+  "ipemisDisplayNameBn": "সান চাইল্ড কেয়ার একাডেমী বেসরকারি প্রাথমিক বিদ্যালয়",
   "schoolType": "Non Government Primary School",
+  "ipemisSchoolCategory": "কিন্ডারগার্টেন",
   "schoolCode": "449597",
   "emisCode": "06113080609",
-  "source": "School identifiers provided by site owner; not independently verified",
-  "syncStatus": "not_connected",
+  "division": "রাজশাহী",
+  "district": "রাজশাহী",
+  "upazila": "বাঘা",
+  "schoolGrade": "এ",
+  "approvedPosts": 12,
+  "vacantPosts": 0,
+  "reservedPosts": 0,
+  "profileCompletionPercent": 83,
+  "source": "IPEMIS school profile screenshot supplied by school site owner; manually transcribed, not live API data",
+  "syncStatus": "manual_screenshot",
   "lastSyncedAt": null
 }
