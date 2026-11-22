@@ -1,4 +1,4 @@
-# আলোকিত প্রাথমিক বিদ্যালয় — School Management
+# Sun Child Care Academy Non Government Primary School — School Management
 
 বাংলা ভাষার paperless school management web app। Admin login দিয়ে শিক্ষার্থী, শিক্ষক, শ্রেণি, উপস্থিতি, ফি, নোটিশ, স্কুলের পরিচিতি এবং ব্যক্তিগত নথি পরিচালনা করা যায়। রেকর্ড Supabase database-এ এবং ফাইল private Supabase Storage-এ থাকে।
 
@@ -32,7 +32,7 @@ Supabase Dashboard → Authentication → URL Configuration-এ local developmen
 
 ## GitHub Pages
 
-GitHub Actions workflow-টি হাতে চালিয়ে Pages প্রকাশ করা যায়, তবে public site URL তৈরি হয়। বিদ্যালয়ের ব্যক্তিগত তথ্য ব্যবহারের আগে প্রকল্পের GitHub Pages visibility ও Supabase Auth redirect URL ঠিক করে নিতে হবে। Deployment workflow শুধু workflow_dispatch-এ চলে; প্রতি push-এ নিজে deploy করে না।
+GitHub Actions workflow-টি হাতে চালিয়ে Pages প্রকাশ করা যায়, তবে public site URL তৈরি হয়। বিদ্যালয়ের ব্যক্তিগত তথ্য ব্যবহারের আগে প্রকল্পের GitHub Pages visibility ও Supabase Auth redirect URL ঠিক করে নিতে হবে। Deployment workflow main branch-এ push এবং workflow_dispatch উভয় ক্ষেত্রেই চলে; GitHub Pages repository settings-এ GitHub Actions source নির্বাচন করতে হবে।
 
 ## পরিচালনা ও backup
 
@@ -44,3 +44,7 @@ GitHub Actions workflow-টি হাতে চালিয়ে Pages প্�
 ## নিরাপত্তা
 
 Supabase RLS admin-কে তার school-এর records-এ সীমাবদ্ধ রাখে। প্রথম admin claim-এর জন্য authenticated session ও one-time setup key লাগে। Browser configuration-এ project URL, school ID এবং publishable key আছে; এগুলো client-side use-এর জন্য। service-role key কখনো repository বা frontend-এ যোগ করবেন না।
+
+## IPEMIS তথ্য
+
+`data/ipemis-school-profile.json`-এ বিদ্যালয়ের মালিকের দেওয়া IPEMIS প্রোফাইল স্ক্রিনশট থেকে যাচাইযোগ্য প্রাতিষ্ঠানিক তথ্য সংরক্ষিত আছে। পাবলিক হোমপেজে এগুলো দেখানো হয়। এটি live government API sync নয়; IPEMIS-এ কোনো তথ্য লেখা হয় না। শিক্ষার্থী বা শিক্ষকের ব্যক্তিগত রেকর্ড পাবলিক রিপোজিটরিতে রাখবেন না।
