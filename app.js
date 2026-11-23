@@ -70,7 +70,7 @@ async function loadProfile() {
   return data;
 }
 async function loadSchoolData() {
-  const names = ['classes','students','teachers','attendance','fee_records','notices','documents'];
+  const names = isAdmin() ? ['classes','students','teachers','attendance','fee_records','notices','documents'] : currentProfile.role === 'teacher' ? ['classes','students','attendance'] : ['classes'];
   const results = await Promise.all(names.map(name => dbClient.from(name).select('*').eq('school_id', currentProfile.school_id)));
   for (let i = 0; i < results.length; i++) if (results[i].error) throw results[i].error;
   const rows = Object.fromEntries(names.map((name, i) => [name, results[i].data || []]));
@@ -78,6 +78,7 @@ async function loadSchoolData() {
   if (schoolResult.error) throw schoolResult.error;
   const school = schoolResult.data;
   db.settings = { schoolName: school.name, motto: school.motto, session: school.session, phone: school.phone, email: school.email, address: school.address };
+  for (const name of ['classes','students','teachers','attendance','fee_records','notices','documents']) rows[name] ||= [];
   db.classes = rows.classes.map(x => ({ id:x.id, name:x.name, teacher:x.teacher, room:x.room }));
   db.students = rows.students.map(x => ({ id:x.id, name:x.name, guardian:x.guardian, classId:x.class_id || '', roll:x.roll, phone:x.phone, admission:x.admission, status:x.status }));
   db.teachers = rows.teachers.map(x => ({ id:x.id, name:x.name, subject:x.subject, phone:x.phone, email:x.email }));
@@ -104,7 +105,7 @@ async function initialize() {
     currentUser = data.session?.user || null;
     if (currentUser) {
       await loadProfile();
-      if (currentProfile?.role === 'admin' && currentProfile.is_active) await loadSchoolData();
+      if (isLoggedIn()) await loadSchoolData();
     }
   } catch (error) { toast(`Backend সংযোগ করা যায়নি: ${backendError(error)}`, true); }
   render();
@@ -116,7 +117,8 @@ async function refreshData(message = '') {
 function getClass(id) { return db.classes.find(c => c.id === id); }
 function getStudent(id) { return db.students.find(s => s.id === id); }
 function studentClassName(student) { return getClass(student?.classId)?.name || 'শ্রেণি নেই'; }
-function isLoggedIn() { return Boolean(currentUser && currentProfile?.role === 'admin' && currentProfile.is_active); }
+function isAdmin() { return Boolean(currentUser && currentProfile?.role === 'admin' && currentProfile.is_active); }
+function isLoggedIn() { return Boolean(currentUser && currentProfile?.is_active && ['admin','teacher','staff'].includes(currentProfile.role)); }
 function goTo(page) { currentPage = page; searchText = ''; document.querySelector('.sidebar')?.classList.remove('open'); render(); window.scrollTo(0, 0); }
 
 const NAV = [
@@ -128,7 +130,8 @@ const NAV = [
   { id: 'fees', label: 'বেতন ও ফি', icon: '৳' },
   { id: 'notices', label: 'নোটিশ', icon: '▣', group: 'যোগাযোগ' },
   { id: 'documents', label: 'ডিজিটাল নথি', icon: '▧' },
-  { id: 'settings', label: 'সেটিংস ও ব্যাকআপ', icon: '⚙', group: 'প্রশাসন' }
+  { id: 'settings', label: 'সেটিংস ও ব্যাকআপ', icon: '⚙', group: 'প্রশাসন' },
+  { id: 'members', label: 'ইউজার অনুমোদন', icon: '♙' }
 ];
 
 function render() {
@@ -136,6 +139,8 @@ function render() {
     renderPasswordRecovery();
   } else if (currentUser && !currentProfile) {
     renderAdminSetup();
+  } else if (currentUser && currentProfile && !currentProfile.is_active) {
+    renderPendingApproval();
   } else if (isLoggedIn()) {
     if (currentPage === 'home' || currentPage === 'login') currentPage = 'dashboard';
     renderApp();
@@ -227,7 +232,7 @@ function renderPasswordRecovery() {
 
 function navMarkup() {
   let lastGroup = '';
-  return NAV.map(item => {
+  return NAV.filter(item => isAdmin() || (currentProfile?.role === 'teacher' ? ['dashboard','students','classes','attendance'].includes(item.id) : ['dashboard','classes'].includes(item.id))).map(item => {
     let label = '';
     if (item.group && item.group !== lastGroup) { label = `<div class="nav-label">${esc(item.group)}</div>`; lastGroup = item.group; }
     return `${label}<button class="nav-item${currentPage === item.id ? ' active' : ''}" data-page="${item.id}"><span class="nav-icon">${item.icon}</span>${item.label}</button>`;
@@ -235,6 +240,8 @@ function navMarkup() {
 }
 
 function renderApp() {
+  const allowed = NAV.filter(x => isAdmin() || (currentProfile?.role === 'teacher' ? ['dashboard','students','classes','attendance'].includes(x.id) : ['dashboard','classes'].includes(x.id)));
+  if (!allowed.some(x => x.id === currentPage)) currentPage = 'dashboard';
   const page = NAV.find(x => x.id === currentPage) || NAV[0];
   app.innerHTML = `
     <div class="app-shell">
@@ -245,11 +252,12 @@ function renderApp() {
       </aside>
       <section class="main-column">
         <header class="topbar"><div class="topbar-left"><button class="btn-icon mobile-menu" data-action="menu" aria-label="মেনু">☰</button><span class="crumb">প্রশাসন &nbsp;›&nbsp; <strong>${page.label}</strong></span></div>
-          <div class="topbar-tools"><label class="search-box"><span class="search-symbol">⌕</span><input id="global-search" type="search" placeholder="এই পাতায় খুঁজুন..." value="${esc(searchText)}" aria-label="খুঁজুন" /></label><span class="topbar-date">${prettyDate(localDateISO())}</span><div class="user-chip"><span class="avatar">${esc(initials(currentProfile?.display_name || 'অ্যাডমিন'))}</span><span class="user-meta"><strong>${esc(currentProfile?.display_name || 'অ্যাডমিন')}</strong><span>সুপার অ্যাডমিন</span></span></div><button class="btn btn-outline btn-small" type="button" data-action="logout" aria-label="অ্যাকাউন্ট থেকে লগআউট">লগআউট ↪</button></div>
+          <div class="topbar-tools"><label class="search-box"><span class="search-symbol">⌕</span><input id="global-search" type="search" placeholder="এই পাতায় খুঁজুন..." value="${esc(searchText)}" aria-label="খুঁজুন" /></label><span class="topbar-date">${prettyDate(localDateISO())}</span><div class="user-chip"><span class="avatar">${esc(initials(currentProfile?.display_name || 'অ্যাডমিন'))}</span><span class="user-meta"><strong>${esc(currentProfile?.display_name || 'অ্যাডমিন')}</strong><span>${isAdmin() ? 'সুপার অ্যাডমিন' : currentProfile.role === 'teacher' ? 'শিক্ষক' : 'স্টাফ'}</span></span></div><button class="btn btn-outline btn-small" type="button" data-action="logout" aria-label="অ্যাকাউন্ট থেকে লগআউট">লগআউট ↪</button></div>
         </header>
         <main class="content" id="page-content">${renderCurrentPage()}</main>
       </section>
     </div>`;
+  if (currentPage === 'members' && isAdmin()) renderMembersIntoPage();
 }
 
 function pageHead(title, description, actions = '') {
@@ -263,8 +271,43 @@ function badge(text, cls = 'gray') { return `<span class="badge badge-${cls}">${
 function emptyRow(cols, title = 'তথ্য পাওয়া যায়নি', sub = 'নতুন তথ্য যোগ করলে এখানে দেখা যাবে।') { return `<tr><td colspan="${cols}"><div class="empty-state"><strong>${title}</strong>${sub}</div></td></tr>`; }
 function exportButton(type, label = 'CSV ডাউনলোড') { return `<button class="btn btn-outline btn-small" data-export="${type}">⇩ ${label}</button>`; }
 
+
+function renderPendingApproval() {
+  app.innerHTML = `<section class="login-screen"><div class="login-card-wrap"><div class="login-card"><h2>অ্যাডমিনের অনুমোদনের অপেক্ষায়</h2><p>${esc(currentUser?.email || '')} — তোমার অ্যাকাউন্ট তৈরি হয়েছে। স্কুলের অ্যাডমিন অনুমোদন দিলে কাজ করতে পারবে।</p><button class="btn btn-primary" data-action="refresh-approval">অনুমোদন পরীক্ষা করুন</button> <button class="btn btn-outline" data-action="logout">লগআউট</button></div></div></section>`;
+}
+function renderMemberDashboard() {
+  return pageHead('আমার ড্যাশবোর্ড','${currentProfile?.role === "teacher" ? "শিক্ষক" : "স্টাফ"} অ্যাকাউন্ট • অ্যাডমিনের অধীনে সীমিত অনুমতি') +
+    `<section class="feature-grid"><article class="feature-card"><h3>স্বাগতম</h3><p>${esc(currentProfile?.display_name || '')}</p></article><article class="feature-card"><h3>শ্রেণি</h3><p>${bn(db.classes.length)} টি</p></article><article class="feature-card"><h3>অনুমতি</h3><p>${currentProfile.role === 'teacher' ? 'শিক্ষার্থী দেখা ও উপস্থিতি নেওয়া' : 'শ্রেণির তালিকা দেখা'}</p></article></section>`;
+}
+function renderMemberClasses() {
+  return pageHead('শ্রেণির তালিকা','দেখার অনুমতি') + `<section class="feature-grid">${db.classes.map(c=>`<article class="feature-card"><h3>${esc(c.name)}</h3><p>শিক্ষক: ${esc(c.teacher || '—')}</p></article>`).join('') || '<p>কোনো শ্রেণি যোগ করা হয়নি।</p>'}</section>`;
+}
+function renderMemberStudents() {
+  return pageHead('শিক্ষার্থীর তালিকা','শুধু শিক্ষক অ্যাকাউন্টের জন্য') + `<section class="feature-grid">${db.students.map(st=>`<article class="feature-card"><h3>${esc(st.name)}</h3><p>${esc(studentClassName(st))} • রোল ${bn(st.roll)}</p></article>`).join('') || '<p>কোনো শিক্ষার্থী নেই।</p>'}</section>`;
+}
+function renderMembers() {
+  return pageHead('ইউজার অনুমোদন','শিক্ষক ও স্টাফের অ্যাকাউন্ট সক্রিয় বা বন্ধ করুন', '<button class="btn btn-outline" data-action="refresh-members">তালিকা রিফ্রেশ</button>') +
+    '<div id="members-list"><p>ইউজার তালিকা লোড হচ্ছে…</p></div>';
+}
+async function renderMembersIntoPage() {
+  const container=document.querySelector('#members-list') || document.querySelector('#page-content');
+  if (!container) return;
+  const {data,error}=await dbClient.from('profiles').select('user_id,display_name,role,is_active').eq('school_id',currentProfile.school_id).order('created_at',{ascending:false});
+  if(error) { toast(backendError(error),true); return; }
+  const html=(data||[]).filter(u=>u.role!=='admin').map(u=>`<form class="feature-card" id="member-form" style="margin-bottom:12px"><h3>${esc(u.display_name)}</h3><p>${u.is_active?'সক্রিয়':'অনুমোদনের অপেক্ষায় / বন্ধ'}</p><input type="hidden" name="userId" value="${esc(u.user_id)}"><label>ভূমিকা <select name="role"><option value="teacher" ${u.role==='teacher'?'selected':''}>শিক্ষক</option><option value="staff" ${u.role==='staff'?'selected':''}>স্টাফ</option></select></label> <label>অ্যাক্সেস <select name="enabled"><option value="true" ${u.is_active?'selected':''}>অনুমোদিত</option><option value="false" ${!u.is_active?'selected':''}>বন্ধ</option></select></label> <button class="btn btn-primary" type="submit">সংরক্ষণ</button></form>`).join('') || '<p>এখনো কোনো নতুন ইউজার নেই। অন্যদের সাইটে গিয়ে অ্যাকাউন্ট তৈরি করতে বলুন।</p>';
+  if(container.id==='members-list') container.innerHTML=html;
+  else container.innerHTML=renderMembers().replace('<div id="members-list"><p>ইউজার তালিকা লোড হচ্ছে…</p></div>',`<div id="members-list">${html}</div>`);
+}
+
 function renderCurrentPage() {
+  if (!isAdmin()) {
+    if (currentPage === 'classes') return renderMemberClasses();
+    if (currentPage === 'students' && currentProfile.role === 'teacher') return renderMemberStudents();
+    if (currentPage === 'attendance' && currentProfile.role === 'teacher') return renderAttendance();
+    return renderMemberDashboard();
+  }
   switch (currentPage) {
+    case 'members': return renderMembers();
     case 'students': return renderStudents();
     case 'teachers': return renderTeachers();
     case 'classes': return renderClasses();
@@ -550,7 +593,7 @@ async function handleSubmit(event) {
     try {
       await loadProfile();
       if (isLoggedIn()) { await loadSchoolData(); currentPage='dashboard'; render(); toast('স্বাগতম, ' + currentProfile.display_name + '।'); }
-      else render();
+      else { render(); toast('অ্যাডমিনের অনুমোদন প্রয়োজন।'); }
     } catch (e) { toast(backendError(e), true); }
     return;
   }
@@ -558,7 +601,7 @@ async function handleSubmit(event) {
     const values = Object.fromEntries(new FormData(form).entries());
     const { data, error } = await dbClient.auth.signUp({ email:String(values.email).trim().toLowerCase(), password:String(values.password), options:{ data:{ display_name:String(values.displayName).trim() } } });
     if (error) return toast(backendError(error), true);
-    if (data.session && data.user) { currentUser=data.user; currentProfile=null; render(); toast('অ্যাকাউন্ট তৈরি হয়েছে। এখন একবারের সেটআপ কী দিন।'); }
+    if (data.session && data.user) { currentUser=data.user; await loadProfile(); render(); toast('অ্যাকাউন্ট তৈরি হয়েছে। অ্যাডমিনের অনুমোদনের জন্য অপেক্ষা করুন।'); }
     else { authMode='login'; render(); toast('অ্যাকাউন্ট তৈরি হয়েছে। ইমেইলে পাঠানো লিংক নিশ্চিত করে লগইন করুন।'); }
     return;
   }
@@ -581,8 +624,15 @@ async function handleSubmit(event) {
     catch (e) { toast(backendError(e), true); }
     return;
   }
+  if (form.id === 'member-form') {
+    if (!isAdmin()) return toast('অনুমতি নেই',true);
+    const v=Object.fromEntries(new FormData(form).entries());
+    const {error}=await dbClient.rpc('manage_school_member',{target_user:v.userId,member_role:v.role,enabled:v.enabled==='true'});
+    if(error) return toast(backendError(error),true);
+    renderMembersIntoPage(); toast('ইউজারের অনুমতি সংরক্ষিত হয়েছে।'); return;
+  }
   if (form.id === 'entity-form') { await saveEntity(form); return; }
-  if (form.id === 'school-settings-form') {
+  if (form.id === 'school-settings-form' && isAdmin()) {
     const values = Object.fromEntries(new FormData(form).entries());
     const payload = { name:values.schoolName, motto:values.motto, session:values.session, phone:values.phone, email:values.email, address:values.address };
     const { error } = await dbClient.from('schools').update(payload).eq('id', currentProfile.school_id);
@@ -591,7 +641,7 @@ async function handleSubmit(event) {
     await refreshData('বিদ্যালয়ের তথ্য সংরক্ষণ হয়েছে।');
     return;
   }
-  if (form.id === 'password-form') {
+  if (form.id === 'password-form' && isAdmin()) {
     const values = Object.fromEntries(new FormData(form).entries());
     if (String(values.newPassword).length < 8) return toast('নতুন পাসওয়ার্ড কমপক্ষে ৮ অক্ষরের হতে হবে।', true);
     if (values.newPassword !== values.confirmPassword) return toast('নতুন পাসওয়ার্ড দুটি মিলছে না।', true);
@@ -632,6 +682,8 @@ async function restoreBackup(file) {
 async function handleAttendanceChange(select) {
   const id = select.dataset.attendance;
   let result;
+  if (!isAdmin() && currentProfile?.role !== 'teacher') return;
+  if (select.value === 'unmarked' && !isAdmin()) return toast('শুধু অ্যাডমিন উপস্থিতির চিহ্ন মুছতে পারবেন।', true);
   if (select.value === 'unmarked') result = await dbClient.from('attendance').delete().eq('school_id', currentProfile.school_id).eq('student_id', id).eq('attendance_date', attendanceDate);
   else result = await dbClient.from('attendance').upsert({ school_id:currentProfile.school_id, student_id:id, attendance_date:attendanceDate, status:select.value }, { onConflict:'school_id,student_id,attendance_date' });
   if (result.error) return toast(backendError(result.error), true);
@@ -641,9 +693,9 @@ async function handleAttendanceChange(select) {
 app.addEventListener('click', async event => {
   const target = event.target.closest('[data-action],[data-page],[data-nav],[data-export]');
   if (!target) return;
-  if (target.dataset.page) { event.preventDefault(); goTo(target.dataset.page); return; }
+  if (target.dataset.page) { event.preventDefault(); if (!isAdmin() && !['dashboard','classes',...(currentProfile?.role === 'teacher'?['students','attendance']:[])].includes(target.dataset.page)) return; goTo(target.dataset.page); return; }
   if (target.dataset.nav === 'home') { event.preventDefault(); currentPage='home'; render(); return; }
-  if (target.dataset.export) { handleExport(target.dataset.export); return; }
+  if (target.dataset.export) { if (!isAdmin()) return; handleExport(target.dataset.export); return; }
   const action = target.dataset.action;
   if (action === 'login') { currentPage='login'; render(); }
   if (action === 'home') { currentPage='home'; render(); }
@@ -659,20 +711,22 @@ app.addEventListener('click', async event => {
     const { error } = await dbClient.auth.resetPasswordForEmail(email.trim(), { redirectTo:window.location.href.split('#')[0] });
     if (error) toast(backendError(error), true); else toast('পাসওয়ার্ড বদলানোর লিংক ইমেইলে পাঠানো হয়েছে।');
   }
+  if (action === 'refresh-members' && isAdmin()) renderMembersIntoPage();
+  if (action === 'refresh-approval') { await loadProfile(); if(isLoggedIn()) { await loadSchoolData(); currentPage='dashboard'; } render(); }
   if (action === 'menu') document.querySelector('.sidebar')?.classList.toggle('open');
-  if (action === 'add') openEntityModal(target.dataset.type);
-  if (action === 'edit') openEntityModal(target.dataset.type,target.dataset.id);
-  if (action === 'delete') deleteEntity(target.dataset.type,target.dataset.id);
+  if (action === 'add' && isAdmin()) openEntityModal(target.dataset.type);
+  if (action === 'edit' && isAdmin()) openEntityModal(target.dataset.type,target.dataset.id);
+  if (action === 'delete' && isAdmin()) deleteEntity(target.dataset.type,target.dataset.id);
   if (action === 'close-modal') modalRoot.innerHTML='';
-  if (action === 'mark-all-present') {
+  if (action === 'mark-all-present' && (isAdmin() || currentProfile?.role === 'teacher')) {
     const rows = db.students.map(s => ({ school_id:currentProfile.school_id, student_id:s.id, attendance_date:attendanceDate, status:'present' }));
     if (!rows.length) return toast('আগে শিক্ষার্থীর তথ্য যোগ করুন।', true);
     const { error } = await dbClient.from('attendance').upsert(rows, { onConflict:'school_id,student_id,attendance_date' });
     if (error) toast(backendError(error), true); else await refreshData('সব শিক্ষার্থীকে উপস্থিত চিহ্নিত করা হয়েছে।');
   }
-  if (action === 'upload-docs') document.querySelector('#document-files')?.click();
-  if (action === 'download-doc') downloadDocument(target.dataset.id);
-  if (action === 'restore') document.querySelector('#restore-file')?.click();
+  if (action === 'upload-docs' && isAdmin()) document.querySelector('#document-files')?.click();
+  if (action === 'download-doc' && isAdmin()) downloadDocument(target.dataset.id);
+  if (action === 'restore' && isAdmin()) document.querySelector('#restore-file')?.click();
 });
 
 app.addEventListener('submit', event => { handleSubmit(event); });
