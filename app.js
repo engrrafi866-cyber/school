@@ -216,7 +216,7 @@ function renderLogin() {
         <h2>${signup ? 'প্রথম অ্যাডমিন অ্যাকাউন্ট' : 'অ্যাডমিন লগইন'}</h2>
         <p>${signup ? 'নিজের ইমেইল ও পাসওয়ার্ড দিয়ে অ্যাকাউন্ট তৈরি করুন।' : 'আপনার অ্যাডমিন অ্যাকাউন্ট দিয়ে প্রবেশ করুন।'}</p>
         ${signup ? `<form id="signup-form"><div class="field"><label>আপনার নাম</label><input name="displayName" autocomplete="name" required minlength="2" /></div><div class="field"><label>ইমেইল</label><input name="email" type="email" autocomplete="email" required placeholder="name@school.edu.bd" /></div><div class="field"><label>পাসওয়ার্ড</label><input name="password" type="password" autocomplete="new-password" minlength="8" required /></div><button class="btn btn-primary" type="submit" style="width:100%;margin-top:4px">অ্যাকাউন্ট তৈরি করুন <span>→</span></button></form>` : `<form id="login-form"><div class="field"><label for="login-email">ইমেইল</label><input id="login-email" name="email" type="email" autocomplete="username" required placeholder="name@school.edu.bd" /></div><div class="field"><label for="login-password">পাসওয়ার্ড</label><input id="login-password" name="password" type="password" autocomplete="current-password" required placeholder="আপনার পাসওয়ার্ড" /></div><button class="btn btn-primary" type="submit" style="width:100%;margin-top:4px">নিরাপদে প্রবেশ করুন <span>→</span></button><button class="btn btn-quiet" type="button" data-action="reset-password">পাসওয়ার্ড ভুলে গেছেন?</button></form>`}
-        <button class="btn btn-quiet login-home" type="button" data-action="toggle-auth">${signup ? 'আগে অ্যাকাউন্ট আছে? লগইন করুন' : 'প্রথমবার? অ্যাডমিন অ্যাকাউন্ট তৈরি করুন'}</button>
+        <button class="btn btn-quiet login-home" type="button" data-action="toggle-auth">${signup ? 'আগে অ্যাকাউন্ট আছে? লগইন করুন' : 'নতুন ইউজার? অ্যাকাউন্ট তৈরি করুন'}</button>
         <button class="btn btn-quiet login-home" type="button" data-action="home">← বিদ্যালয়ের পাতায় ফিরে যান</button>
       </div></section>
     </div>`;
@@ -276,7 +276,7 @@ function renderPendingApproval() {
   app.innerHTML = `<section class="login-screen"><div class="login-card-wrap"><div class="login-card"><h2>অ্যাডমিনের অনুমোদনের অপেক্ষায়</h2><p>${esc(currentUser?.email || '')} — তোমার অ্যাকাউন্ট তৈরি হয়েছে। স্কুলের অ্যাডমিন অনুমোদন দিলে কাজ করতে পারবে।</p><button class="btn btn-primary" data-action="refresh-approval">অনুমোদন পরীক্ষা করুন</button> <button class="btn btn-outline" data-action="logout">লগআউট</button></div></div></section>`;
 }
 function renderMemberDashboard() {
-  return pageHead('আমার ড্যাশবোর্ড','${currentProfile?.role === "teacher" ? "শিক্ষক" : "স্টাফ"} অ্যাকাউন্ট • অ্যাডমিনের অধীনে সীমিত অনুমতি') +
+  return pageHead('আমার ড্যাশবোর্ড',(currentProfile?.role === 'teacher' ? 'শিক্ষক' : 'স্টাফ') + ' অ্যাকাউন্ট • অ্যাডমিনের অধীনে সীমিত অনুমতি') +
     `<section class="feature-grid"><article class="feature-card"><h3>স্বাগতম</h3><p>${esc(currentProfile?.display_name || '')}</p></article><article class="feature-card"><h3>শ্রেণি</h3><p>${bn(db.classes.length)} টি</p></article><article class="feature-card"><h3>অনুমতি</h3><p>${currentProfile.role === 'teacher' ? 'শিক্ষার্থী দেখা ও উপস্থিতি নেওয়া' : 'শ্রেণির তালিকা দেখা'}</p></article></section>`;
 }
 function renderMemberClasses() {
